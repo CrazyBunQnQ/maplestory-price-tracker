@@ -285,6 +285,7 @@
             margin: 1px;
         }
         
+        /* 英語職業名に対応したCSS */
         .job-warrior { background: #dc3545; }
         .job-magician { background: #007bff; }
         .job-bowman { background: #28a745; }
@@ -504,11 +505,11 @@
                 </select>
                 <select id="jobFilter" class="filter-select">
                     <option value="">すべての職業</option>
-                    <option value="Warrior">戦士</option>
-                    <option value="Magician">魔法使い</option>
-                    <option value="Bowman">弓使い</option>
-                    <option value="Thief">盗賊</option>
-                    <option value="Pirate">海賊</option>
+                    <option value="Warrior">Warrior</option>
+                    <option value="Magician">Magician</option>
+                    <option value="Bowman">Bowman</option>
+                    <option value="Thief">Thief</option>
+                    <option value="Pirate">Pirate</option>
                 </select>
                 <select id="setFilter" class="filter-select">
                     <option value="">すべてのセット</option>
@@ -606,7 +607,7 @@
             }
             
             async loadData() {
-                // キャッシュ確認
+                // キャッシュ確認[1]
                 const cached = localStorage.getItem('equipmentDataCache');
                 const cacheTime = localStorage.getItem('equipmentDataCacheTime');
                 
@@ -633,7 +634,7 @@
             }
             
             getFallbackData() {
-                // 新しいJSONデータ構造に対応したフォールバックデータ
+                // アップロードされたJSONデータ構造に基づくフォールバックデータ[1]
                 return {
                     "1382285": {"item_name": "Unchained Staff", "image_url": "https://api-static.msu.io/itemimages/icon/1382285.png", "item_id": "1382285", "item_price": "2,795,000", "status": "価格更新済み", "categories": ["Weapon", "One-handed Weapon", "Staff"], "required_level": "120", "required_jobs": ["Magician"]},
                     "1352232": {"item_name": "Rusty Book", "image_url": "https://api-static.msu.io/itemimages/icon/1352232.png", "item_id": "1352232", "item_price": "1,480,000", "status": "価格更新済み", "categories": ["Weapon", "Secondary Weapon", "Magic Book"], "required_level": "100", "required_jobs": ["Magician"]}
@@ -668,7 +669,7 @@
                 const setNames = new Set();
                 
                 Object.values(this.rawData).forEach(item => {
-                    // categories配列から最も具体的なカテゴリを取得[2]
+                    // categories配列から最も具体的なカテゴリを取得[1]
                     if (item.categories && item.categories.length > 0) {
                         // 最後の要素が最も具体的なカテゴリ
                         const specificCategory = item.categories[item.categories.length - 1];
@@ -749,7 +750,16 @@
                     'Face Accessory': '顔アクセサリ',
                     'Eye Accessory': '目アクセサリ',
                     'Shoulder Accessory': '肩装飾',
-                    'Pocket Item': 'ポケットアイテム'
+                    'Pocket Item': 'ポケットアイテム',
+                    'Rosary': 'ロザリオ',
+                    'Medal': 'メダル',
+                    'Iron Chain': '鉄鎖',
+                    'Arrow Fletching': '矢羽根',
+                    'Bow Thimble': '弓指ぬき',
+                    'Charm': 'チャーム',
+                    'Dagger Scabbard': '短剣鞘',
+                    'Far Sight': '照準器',
+                    'Wrist Band': 'リストバンド'
                 };
                 return categoryNames[category] || category;
             }
@@ -770,7 +780,8 @@
                     /^(Zakum's Poisonic)\s/i,
                     /^(Chaos)\s/i,
                     /^(Enraged)\s/i,
-                    /^(Neophyte)\s/i
+                    /^(Neophyte)\s/i,
+                    /^(Trixter)\s/i
                 ];
                 
                 for (const pattern of setPatterns) {
@@ -811,14 +822,14 @@
                     // 検索フィルタ
                     if (searchTerm && !item.item_name.toLowerCase().includes(searchTerm)) return false;
                     
-                    // カテゴリフィルタ（categories配列の最後の要素で判定）[2]
+                    // カテゴリフィルタ（categories配列の最後の要素で判定）[1]
                     if (category) {
                         if (!item.categories || !item.categories.includes(category)) {
                             return false;
                         }
                     }
                     
-                    // 職業フィルタ（required_jobs配列で判定）[2]
+                    // 職業フィルタ（required_jobs配列で判定、英語表記で比較）[1]
                     if (job) {
                         if (!item.required_jobs || !Array.isArray(item.required_jobs) || !item.required_jobs.includes(job)) {
                             return false;
@@ -932,15 +943,15 @@
                     const setName = this.detectSetName(item.item_name);
                     const isSelected = this.selectedItems.has(item.item_id);
                     
-                    // 職業バッジの生成（required_jobs配列を使用）[2]
+                    // 職業バッジの生成（英語表記を維持）[1]
                     const jobBadges = item.required_jobs && Array.isArray(item.required_jobs) ? 
                         item.required_jobs.map(job => 
-                            `<span class="job-badge job-${job.toLowerCase()}">${this.getJobName(job)}</span>`
+                            `<span class="job-badge job-${job.toLowerCase()}">${job}</span>`
                         ).join('') : '';
                     
                     const setBadge = setName ? `<span class="set-badge">${setName}</span>` : '';
                     
-                    // カテゴリ表示（最も具体的なカテゴリを使用）[2]
+                    // カテゴリ表示（最も具体的なカテゴリを使用）[1]
                     const categoryDisplay = item.categories && item.categories.length > 0 ? 
                         this.getCategoryDisplayName(item.categories[item.categories.length - 1]) : '-';
                     
@@ -959,17 +970,6 @@
                 });
                 
                 this.renderPagination();
-            }
-            
-            getJobName(job) {
-                const jobNames = {
-                    'Warrior': '戦士',
-                    'Magician': '魔法',
-                    'Bowman': '弓使',
-                    'Thief': '盗賊',
-                    'Pirate': '海賊'
-                };
-                return jobNames[job] || job;
             }
             
             toggleItem(itemId) {
