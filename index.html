@@ -29,7 +29,7 @@
         
         .main-content {
             flex: 1;
-            margin-right: 320px; /* スペース for sidebar */
+            margin-right: 350px; /* サイドバー用のスペースを増加 */
         }
         
         .header {
@@ -228,8 +228,12 @@
             background-color: rgba(102, 126, 234, 0.1);
         }
         
-        tr.selected {
+        tr.selected-a {
             background-color: rgba(40, 167, 69, 0.2);
+        }
+        
+        tr.selected-b {
+            background-color: rgba(255, 193, 7, 0.2);
         }
         
         .item-image {
@@ -285,7 +289,6 @@
             margin: 1px;
         }
         
-        /* 英語職業名に対応したCSS */
         .job-warrior { background: #dc3545; }
         .job-magician { background: #007bff; }
         .job-bowman { background: #28a745; }
@@ -302,12 +305,47 @@
             margin-left: 5px;
         }
         
+        .select-buttons {
+            display: flex;
+            gap: 5px;
+        }
+        
+        .select-btn {
+            padding: 4px 8px;
+            border: 1px solid #ddd;
+            background: white;
+            cursor: pointer;
+            border-radius: 3px;
+            font-size: 11px;
+            transition: all 0.3s ease;
+        }
+        
+        .select-btn.a {
+            border-color: #28a745;
+            color: #28a745;
+        }
+        
+        .select-btn.a:hover, .select-btn.a.selected {
+            background: #28a745;
+            color: white;
+        }
+        
+        .select-btn.b {
+            border-color: #ffc107;
+            color: #ffc107;
+        }
+        
+        .select-btn.b:hover, .select-btn.b.selected {
+            background: #ffc107;
+            color: white;
+        }
+        
         /* サイドバー */
         .sidebar {
             position: fixed;
             right: 0;
             top: 0;
-            width: 300px;
+            width: 330px;
             height: 100vh;
             background: white;
             border-left: 2px solid #dee2e6;
@@ -324,10 +362,39 @@
             text-align: center;
         }
         
-        .selected-items {
+        .selection-tabs {
+            display: flex;
+        }
+        
+        .tab-btn {
+            flex: 1;
+            padding: 10px;
+            border: none;
+            background: #e9ecef;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background 0.3s ease;
+        }
+        
+        .tab-btn.active.a {
+            background: #28a745;
+            color: white;
+        }
+        
+        .tab-btn.active.b {
+            background: #ffc107;
+            color: white;
+        }
+        
+        .selection-content {
             flex: 1;
             overflow-y: auto;
             padding: 10px;
+            display: none;
+        }
+        
+        .selection-content.active {
+            display: block;
         }
         
         .selected-item {
@@ -337,7 +404,15 @@
             margin-bottom: 8px;
             background: #f8f9fa;
             border-radius: 6px;
-            border-left: 4px solid #667eea;
+            border-left: 4px solid;
+        }
+        
+        .selected-item.a {
+            border-color: #28a745;
+        }
+        
+        .selected-item.b {
+            border-color: #ffc107;
         }
         
         .selected-item img {
@@ -379,26 +454,40 @@
         }
         
         .total-price {
-            font-size: 1.2rem;
+            font-size: 1.1rem;
             font-weight: bold;
             color: #2c3e50;
             text-align: center;
-            margin-bottom: 10px;
+            margin-bottom: 8px;
         }
         
-        .clear-all-btn {
+        .clear-btn, .compare-btn {
             width: 100%;
-            padding: 8px;
-            background: #dc3545;
-            color: white;
+            padding: 6px;
             border: none;
             border-radius: 4px;
             cursor: pointer;
             font-weight: bold;
+            margin-bottom: 5px;
+            font-size: 12px;
         }
         
-        .clear-all-btn:hover {
+        .clear-btn {
+            background: #dc3545;
+            color: white;
+        }
+        
+        .clear-btn:hover {
             background: #c82333;
+        }
+        
+        .compare-btn {
+            background: #17a2b8;
+            color: white;
+        }
+        
+        .compare-btn:hover {
+            background: #138496;
         }
         
         .comparison-section {
@@ -559,16 +648,29 @@
         <!-- サイドバー -->
         <div class="sidebar">
             <div class="sidebar-header">
-                選択済みアイテム
+                装備セット比較
             </div>
-            <div class="selected-items" id="selectedItems">
-                <!-- 選択されたアイテムが表示される -->
+            <div class="selection-tabs">
+                <button class="tab-btn a active" onclick="switchTab('a')">セットA</button>
+                <button class="tab-btn b" onclick="switchTab('b')">セットB</button>
             </div>
+            
+            <div class="selection-content a active" id="selectionA">
+                <!-- セットAのアイテム -->
+            </div>
+            
+            <div class="selection-content b" id="selectionB">
+                <!-- セットBのアイテム -->
+            </div>
+            
             <div class="total-section">
-                <div class="total-price" id="totalPrice">合計: 0 NESO</div>
-                <button class="clear-all-btn" onclick="clearAllItems()">すべてクリア</button>
+                <div class="total-price" id="totalPriceA">セットA: 0 NESO</div>
+                <div class="total-price" id="totalPriceB">セットB: 0 NESO</div>
+                <button class="clear-btn" onclick="clearSet('a')">セットAクリア</button>
+                <button class="clear-btn" onclick="clearSet('b')">セットBクリア</button>
+                <button class="compare-btn" onclick="compareAllSets()">詳細比較</button>
                 <div class="comparison-section" id="comparisonSection" style="display: none;">
-                    <div class="comparison-title">同系統装備比較</div>
+                    <div class="comparison-title">セット比較結果</div>
                     <div id="comparisonList"></div>
                 </div>
             </div>
@@ -581,12 +683,13 @@
             constructor() {
                 this.rawData = {};
                 this.filteredData = [];
-                this.selectedItems = new Map();
+                this.selectedItemsA = new Map();
+                this.selectedItemsB = new Map();
                 this.currentPage = 1;
                 this.itemsPerPage = 50;
                 this.sortField = 'name';
                 this.sortDirection = 'asc';
-                this.cache = new Map();
+                this.currentTab = 'a';
                 
                 this.init();
             }
@@ -607,7 +710,6 @@
             }
             
             async loadData() {
-                // キャッシュ確認[1]
                 const cached = localStorage.getItem('equipmentDataCache');
                 const cacheTime = localStorage.getItem('equipmentDataCacheTime');
                 
@@ -617,24 +719,20 @@
                 }
                 
                 try {
-                    // GitHub Pages対応の相対パス
                     const response = await fetch('./data/equipment_prices.json');
                     if (!response.ok) throw new Error(`HTTP ${response.status}`);
                     
                     this.rawData = await response.json();
                     
-                    // キャッシュに保存
                     localStorage.setItem('equipmentDataCache', JSON.stringify(this.rawData));
                     localStorage.setItem('equipmentDataCacheTime', Date.now().toString());
                 } catch (error) {
-                    // フォールバック: 直接埋め込みデータ使用
                     console.warn('JSONファイル読み込み失敗、埋め込みデータを使用:', error);
                     this.rawData = this.getFallbackData();
                 }
             }
             
             getFallbackData() {
-                // アップロードされたJSONデータ構造に基づくフォールバックデータ[1]
                 return {
                     "1382285": {"item_name": "Unchained Staff", "image_url": "https://api-static.msu.io/itemimages/icon/1382285.png", "item_id": "1382285", "item_price": "2,795,000", "status": "価格更新済み", "categories": ["Weapon", "One-handed Weapon", "Staff"], "required_level": "120", "required_jobs": ["Magician"]},
                     "1352232": {"item_name": "Rusty Book", "image_url": "https://api-static.msu.io/itemimages/icon/1352232.png", "item_id": "1352232", "item_price": "1,480,000", "status": "価格更新済み", "categories": ["Weapon", "Secondary Weapon", "Magic Book"], "required_level": "100", "required_jobs": ["Magician"]}
@@ -664,30 +762,24 @@
             }
             
             generateFilters() {
-                // カテゴリフィルター生成（JSONの categories 配列を使用）
                 const categories = new Set();
                 const setNames = new Set();
                 
                 Object.values(this.rawData).forEach(item => {
-                    // categories配列から最も具体的なカテゴリを取得[1]
                     if (item.categories && item.categories.length > 0) {
-                        // 最後の要素が最も具体的なカテゴリ
                         const specificCategory = item.categories[item.categories.length - 1];
                         if (specificCategory && specificCategory.trim() !== '') {
                             categories.add(specificCategory);
                         }
                     }
                     
-                    // セット名の検出
                     const setName = this.detectSetName(item.item_name);
                     if (setName) {
                         setNames.add(setName);
                     }
                 });
                 
-                // カテゴリオプション追加
                 const categoryFilter = document.getElementById('categoryFilter');
-                // 既存のオプションをクリア（最初のオプション以外）
                 while (categoryFilter.children.length > 1) {
                     categoryFilter.removeChild(categoryFilter.lastChild);
                 }
@@ -699,9 +791,7 @@
                     categoryFilter.appendChild(option);
                 });
                 
-                // セットオプション追加
                 const setFilter = document.getElementById('setFilter');
-                // 既存のオプションをクリア（最初のオプション以外）
                 while (setFilter.children.length > 1) {
                     setFilter.removeChild(setFilter.lastChild);
                 }
@@ -715,11 +805,10 @@
             }
             
             getCategoryDisplayName(category) {
-                // カテゴリの日本語表示名を返す
                 const categoryNames = {
                     'Staff': '杖',
                     'Wand': 'ワンド',
-                    'Magic Book': '魔導書',
+                    'Magic Book': 'サブウエポン',
                     'Bow': '弓',
                     'Crossbow': 'クロスボウ',
                     'One-handed Sword': '片手剣',
@@ -751,21 +840,22 @@
                     'Eye Accessory': '目アクセサリ',
                     'Shoulder Accessory': '肩装飾',
                     'Pocket Item': 'ポケットアイテム',
-                    'Rosary': 'ロザリオ',
-                    'Medal': 'メダル',
-                    'Iron Chain': '鉄鎖',
-                    'Arrow Fletching': '矢羽根',
-                    'Bow Thimble': '弓指ぬき',
-                    'Charm': 'チャーム',
-                    'Dagger Scabbard': '短剣鞘',
-                    'Far Sight': '照準器',
-                    'Wrist Band': 'リストバンド'
+                    // サブウエポンに統一
+                    'Rosary': 'サブウエポン',
+                    'Medal': 'サブウエポン',
+                    'Iron Chain': 'サブウエポン',
+                    'Arrow Fletching': 'サブウエポン',
+                    'Bow Thimble': 'サブウエポン',
+                    'Charm': 'サブウエポン',
+                    'Dagger Scabbard': 'サブウエポン',
+                    'Far Sight': 'サブウエポン',
+                    'Wrist Band': 'サブウエポン'
                 };
                 return categoryNames[category] || category;
             }
             
             detectSetName(itemName) {
-                // セット名の検出ロジック
+                // chaosとZakum's Poisonicセットを削除
                 const setPatterns = [
                     /^(Unchained)\s/i,
                     /^(Royal Von Leon)\s/i,
@@ -777,8 +867,6 @@
                     /^(Eagle Eye)\s/i,
                     /^(Necromancer)\s/i,
                     /^(Necro)\s/i,
-                    /^(Zakum's Poisonic)\s/i,
-                    /^(Chaos)\s/i,
                     /^(Enraged)\s/i,
                     /^(Neophyte)\s/i,
                     /^(Trixter)\s/i
@@ -819,24 +907,20 @@
                 this.filteredData = Object.values(this.rawData).filter(item => {
                     if (!item.item_name || item.item_name.trim() === '') return false;
                     
-                    // 検索フィルタ
                     if (searchTerm && !item.item_name.toLowerCase().includes(searchTerm)) return false;
                     
-                    // カテゴリフィルタ（categories配列の最後の要素で判定）[1]
                     if (category) {
                         if (!item.categories || !item.categories.includes(category)) {
                             return false;
                         }
                     }
                     
-                    // 職業フィルタ（required_jobs配列で判定、英語表記で比較）[1]
                     if (job) {
                         if (!item.required_jobs || !Array.isArray(item.required_jobs) || !item.required_jobs.includes(job)) {
                             return false;
                         }
                     }
                     
-                    // セットフィルタ
                     if (set) {
                         const itemSetName = this.detectSetName(item.item_name);
                         if (!itemSetName || !itemSetName.includes(set)) {
@@ -844,7 +928,6 @@
                         }
                     }
                     
-                    // 価格フィルタ
                     if (priceRange) {
                         const price = this.parsePrice(item.item_price);
                         const [min, max] = priceRange.split('-').map(Number);
@@ -919,8 +1002,6 @@
                 const total = this.filteredData.length;
                 const avg = prices.length > 0 ? Math.round(prices.reduce((a, b) => a + b, 0) / prices.length) : 0;
                 const max = prices.length > 0 ? Math.max(...prices) : 0;
-                
-                // セット装備数をカウント
                 const setCount = this.filteredData.filter(item => this.detectSetName(item.item_name)).length;
                 
                 document.getElementById('totalItems').textContent = total.toLocaleString();
@@ -941,22 +1022,24 @@
                 pageData.forEach(item => {
                     const price = this.parsePrice(item.item_price);
                     const setName = this.detectSetName(item.item_name);
-                    const isSelected = this.selectedItems.has(item.item_id);
+                    const isSelectedA = this.selectedItemsA.has(item.item_id);
+                    const isSelectedB = this.selectedItemsB.has(item.item_id);
                     
-                    // 職業バッジの生成（英語表記を維持）[1]
                     const jobBadges = item.required_jobs && Array.isArray(item.required_jobs) ? 
                         item.required_jobs.map(job => 
                             `<span class="job-badge job-${job.toLowerCase()}">${job}</span>`
                         ).join('') : '';
                     
                     const setBadge = setName ? `<span class="set-badge">${setName}</span>` : '';
-                    
-                    // カテゴリ表示（最も具体的なカテゴリを使用）[1]
                     const categoryDisplay = item.categories && item.categories.length > 0 ? 
                         this.getCategoryDisplayName(item.categories[item.categories.length - 1]) : '-';
                     
+                    let rowClass = '';
+                    if (isSelectedA) rowClass = 'selected-a';
+                    if (isSelectedB) rowClass = 'selected-b';
+                    
                     const row = tableBody.insertRow();
-                    row.className = isSelected ? 'selected' : '';
+                    row.className = rowClass;
                     row.innerHTML = `
                         <td><img src="${item.image_url}" alt="${item.item_name}" class="item-image" loading="lazy" onerror="this.style.display='none'"></td>
                         <td class="item-name">${item.item_name}${setBadge}</td>
@@ -965,92 +1048,73 @@
                         <td>${jobBadges}</td>
                         <td>${item.required_level || '-'}</td>
                         <td>${setName || '-'}</td>
-                        <td><button onclick="tracker.toggleItem('${item.item_id}')" class="page-btn">${isSelected ? '削除' : '選択'}</button></td>
+                        <td>
+                            <div class="select-buttons">
+                                <button class="select-btn a ${isSelectedA ? 'selected' : ''}" onclick="tracker.toggleItem('${item.item_id}', 'a')">A</button>
+                                <button class="select-btn b ${isSelectedB ? 'selected' : ''}" onclick="tracker.toggleItem('${item.item_id}', 'b')">B</button>
+                            </div>
+                        </td>
                     `;
                 });
                 
                 this.renderPagination();
             }
             
-            toggleItem(itemId) {
+            toggleItem(itemId, set) {
                 const item = this.rawData[itemId];
                 if (!item) return;
                 
-                if (this.selectedItems.has(itemId)) {
-                    this.selectedItems.delete(itemId);
+                const selectedMap = set === 'a' ? this.selectedItemsA : this.selectedItemsB;
+                const otherMap = set === 'a' ? this.selectedItemsB : this.selectedItemsA;
+                
+                // 他のセットから削除
+                otherMap.delete(itemId);
+                
+                if (selectedMap.has(itemId)) {
+                    selectedMap.delete(itemId);
                 } else {
-                    this.selectedItems.set(itemId, item);
+                    selectedMap.set(itemId, item);
                 }
                 
                 this.updateSelectedItemsDisplay();
-                this.renderTable(); // 選択状態を更新
+                this.renderTable();
             }
             
             updateSelectedItemsDisplay() {
-                const container = document.getElementById('selectedItems');
-                const totalPrice = document.getElementById('totalPrice');
-                const comparisonSection = document.getElementById('comparisonSection');
-                
+                this.updateSetDisplay('a', this.selectedItemsA);
+                this.updateSetDisplay('b', this.selectedItemsB);
+                this.updateTotalPrices();
+            }
+            
+            updateSetDisplay(set, selectedMap) {
+                const container = document.getElementById(`selection${set.toUpperCase()}`);
                 container.innerHTML = '';
-                let total = 0;
                 
-                // カテゴリ別にグループ化して比較用データを準備
-                const categoryGroups = new Map();
-                
-                this.selectedItems.forEach((item, itemId) => {
+                selectedMap.forEach((item, itemId) => {
                     const price = this.parsePrice(item.item_price);
-                    total += price;
                     
                     const itemDiv = document.createElement('div');
-                    itemDiv.className = 'selected-item';
+                    itemDiv.className = `selected-item ${set}`;
                     itemDiv.innerHTML = `
                         <img src="${item.image_url}" alt="${item.item_name}" onerror="this.style.display='none'">
                         <div class="selected-item-info">
                             <div class="selected-item-name">${item.item_name}</div>
                             <div class="selected-item-price">${this.formatPrice(price)}</div>
                         </div>
-                        <button class="remove-btn" onclick="tracker.toggleItem('${itemId}')">×</button>
+                        <button class="remove-btn" onclick="tracker.toggleItem('${itemId}', '${set}')">×</button>
                     `;
                     container.appendChild(itemDiv);
-                    
-                    // カテゴリ別グループ化
-                    if (item.categories && item.categories.length > 0) {
-                        const category = item.categories[item.categories.length - 1];
-                        if (!categoryGroups.has(category)) {
-                            categoryGroups.set(category, []);
-                        }
-                        categoryGroups.get(category).push({item, price});
-                    }
                 });
+            }
+            
+            updateTotalPrices() {
+                const totalA = Array.from(this.selectedItemsA.values())
+                    .reduce((sum, item) => sum + this.parsePrice(item.item_price), 0);
+                const totalB = Array.from(this.selectedItemsB.values())
+                    .reduce((sum, item) => sum + this.parsePrice(item.item_price), 0);
                 
-                totalPrice.textContent = `合計: ${this.formatPrice(total)}`;
-                
-                // 同系統装備の比較表示
-                const comparisonList = document.getElementById('comparisonList');
-                comparisonList.innerHTML = '';
-                
-                let hasComparison = false;
-                categoryGroups.forEach((items, category) => {
-                    if (items.length > 1) {
-                        hasComparison = true;
-                        const comparisonDiv = document.createElement('div');
-                        comparisonDiv.className = 'comparison-item';
-                        
-                        const sortedItems = items.sort((a, b) => a.price - b.price);
-                        const cheapest = sortedItems[0];
-                        const mostExpensive = sortedItems[sortedItems.length - 1];
-                        
-                        comparisonDiv.innerHTML = `
-                            <strong>${this.getCategoryDisplayName(category)}:</strong><br>
-                            最安: ${cheapest.item.item_name} (${this.formatPrice(cheapest.price)})<br>
-                            最高: ${mostExpensive.item.item_name} (${this.formatPrice(mostExpensive.price)})<br>
-                            価格差: ${this.formatPrice(mostExpensive.price - cheapest.price)}
-                        `;
-                        comparisonList.appendChild(comparisonDiv);
-                    }
-                });
-                
-                comparisonSection.style.display = hasComparison ? 'block' : 'none';
+                document.getElementById('totalPriceA').textContent = `セットA: ${this.formatPrice(totalA)}`;
+                document.getElementById('totalPriceB').textContent = `セットB: ${this.formatPrice(totalB)}`;
             }
             
             renderPagination() {
@@ -1065,7 +1129,6 @@
                 if (totalPages <= 1) return '';
                 
                 let html = '';
-                
                 html += `<button class="page-btn" onclick="tracker.goToPage(${this.currentPage - 1})" ${this.currentPage === 1 ? 'disabled' : ''}>‹ 前へ</button>`;
                 
                 const start = Math.max(1, this.currentPage - 2);
@@ -1116,15 +1179,92 @@
             }
         }
         
-        // グローバルスコープで使用するための関数
+        // グローバル関数
         function sortTable(field) {
             tracker.sortTable(field);
         }
         
-        function clearAllItems() {
-            tracker.selectedItems.clear();
+        function switchTab(tab) {
+            tracker.currentTab = tab;
+            
+            // タブボタンの切り替え
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelector(`.tab-btn.${tab}`).classList.add('active');
+            
+            // コンテンツの切り替え
+            document.querySelectorAll('.selection-content').forEach(content => content.classList.remove('active'));
+            document.getElementById(`selection${tab.toUpperCase()}`).classList.add('active');
+        }
+        
+        function clearSet(set) {
+            if (set === 'a') {
+                tracker.selectedItemsA.clear();
+            } else {
+                tracker.selectedItemsB.clear();
+            }
             tracker.updateSelectedItemsDisplay();
             tracker.renderTable();
+        }
+        
+        function compareAllSets() {
+            const comparisonSection = document.getElementById('comparisonSection');
+            const comparisonList = document.getElementById('comparisonList');
+            
+            if (tracker.selectedItemsA.size === 0 && tracker.selectedItemsB.size === 0) {
+                comparisonSection.style.display = 'none';
+                return;
+            }
+            
+            // カテゴリ別比較
+            const categoriesA = new Map();
+            const categoriesB = new Map();
+            
+            tracker.selectedItemsA.forEach(item => {
+                if (item.categories && item.categories.length > 0) {
+                    const category = item.categories[item.categories.length - 1];
+                    categoriesA.set(category, {item, price: tracker.parsePrice(item.item_price)});
+                }
+            });
+            
+            tracker.selectedItemsB.forEach(item => {
+                if (item.categories && item.categories.length > 0) {
+                    const category = item.categories[item.categories.length - 1];
+                    categoriesB.set(category, {item, price: tracker.parsePrice(item.item_price)});
+                }
+            });
+            
+            comparisonList.innerHTML = '';
+            
+            const allCategories = new Set([...categoriesA.keys(), ...categoriesB.keys()]);
+            
+            allCategories.forEach(category => {
+                const itemA = categoriesA.get(category);
+                const itemB = categoriesB.get(category);
+                
+                const comparisonDiv = document.createElement('div');
+                comparisonDiv.className = 'comparison-item';
+                
+                let html = `<strong>${tracker.getCategoryDisplayName(category)}:</strong><br>`;
+                
+                if (itemA && itemB) {
+                    const diff = itemB.price - itemA.price;
+                    const diffText = diff > 0 ? `+${tracker.formatPrice(diff)}` : tracker.formatPrice(diff);
+                    html += `A: ${itemA.item.item_name} (${tracker.formatPrice(itemA.price)})<br>`;
+                    html += `B: ${itemB.item.item_name} (${tracker.formatPrice(itemB.price)})<br>`;
+                    html += `価格差: ${diffText}`;
+                } else if (itemA) {
+                    html += `A: ${itemA.item.item_name} (${tracker.formatPrice(itemA.price)})<br>`;
+                    html += `B: 未選択`;
+                } else if (itemB) {
+                    html += `A: 未選択<br>`;
+                    html += `B: ${itemB.item.item_name} (${tracker.formatPrice(itemB.price)})`;
+                }
+                
+                comparisonDiv.innerHTML = html;
+                comparisonList.appendChild(comparisonDiv);
+            });
+            
+            comparisonSection.style.display = 'block';
         }
         
         // アプリケーション初期化
