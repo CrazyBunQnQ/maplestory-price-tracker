@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MapleStory装備価格一覧</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+        
+        .controls {
+            padding: 20px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        
+        .search-box {
+            flex: 1;
+            min-width: 200px;
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        
+        .filter-select {
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            background: white;
+        }
+        
+        .table-container {
+            overflow-x: auto;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+        
+        th {
+            background: #f8f9fa;
+            padding: 12px 8px;
+            text-align: left;
+            border-bottom: 2px solid #dee2e6;
+            position: sticky;
+            top: 0;
+            cursor: pointer;
+            user-select: none;
+        }
+        
+        th:hover {
+            background: #e9ecef;
+        }
+        
+        td {
+            padding: 8px;
+            border-bottom: 1px solid #dee2e6;
+        }
+        
+        tr:hover {
+            background-color: #f8f9fa;
+        }
+        
+        .item-image {
+            width: 32px;
+            height: 32px;
+            object-fit: contain;
+        }
+        
+        .price {
+            font-weight: bold;
+            color: #28a745;
+            text-align: right;
+        }
+        
+        .status-badge {
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            background: #28a745;
+            color: white;
+        }
+        
+        .stats {
+            display: flex;
+            justify-content: space-around;
+            padding: 15px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #dee2e6;
+        }
+        
+        .stat-item {
+            text-align: center;
+        }
+        
+        .stat-number {
+            font-size: 24px;
+            font-weight: bold;
+            color: #495057;
+        }
+        
+        .stat-label {
+            font-size: 12px;
+            color: #6c757d;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>MapleStory装備価格一覧</h1>
+            <p>最新の装備アイテム価格情報</p>
+        </div>
+        
+        <div class="stats" id="stats">
+            <div class="stat-item">
+                <div class="stat-number" id="totalItems">-</div>
+                <div class="stat-label">総アイテム数</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number" id="avgPrice">-</div>
+                <div class="stat-label">平均価格</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number" id="maxPrice">-</div>
+                <div class="stat-label">最高価格</div>
+            </div>
+        </div>
+        
+        <div class="controls">
+            <input type="text" id="searchInput" class="search-box" placeholder="アイテム名で検索...">
+            <select id="categoryFilter" class="filter-select">
+                <option value="">すべてのカテゴリ</option>
+                <option value="Staff">杖</option>
+                <option value="Wand">ワンド</option>
+                <option value="Book">魔導書</option>
+                <option value="Bow">弓</option>
+                <option value="Sword">剣</option>
+                <option value="Axe">斧</option>
+                <option value="Hammer">ハンマー</option>
+                <option value="Dagger">短剣</option>
+                <option value="Guards">爪</option>
+            </select>
+            <select id="priceFilter" class="filter-select">
+                <option value="">すべての価格帯</option>
+                <option value="0-500000">50万以下</option>
+                <option value="500000-1000000">50万-100万</option>
+                <option value="1000000-5000000">100万-500万</option>
+                <option value="5000000-999999999">500万以上</option>
+            </select>
+        </div>
+        
+        <div class="table-container">
+            <table id="equipmentTable">
+                <thead>
+                    <tr>
+                        <th onclick="sortTable(0)">画像</th>
+                        <th onclick="sortTable(1)">アイテム名 ↕</th>
+                        <th onclick="sortTable(2)">価格 ↕</th>
+                        <th onclick="sortTable(3)">アイテムID</th>
+                        <th onclick="sortTable(4)">ステータス</th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody">
+                    <!-- データはJavaScriptで動的に生成 -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        // JSONデータをここに貼り付け
+        const equipmentData = [1]; // アップロードされたJSONデータ
+        
+        let currentData = [];
+        let sortDirection = {};
+        
+        // 数値フォーマット関数
+        function formatPrice(price) {
+            if (price === "未取得") return price;
+            return parseInt(price.replace(/,/g, '')).toLocaleString() + '円';
+        }
+        
+        // 価格を数値に変換
+        function parsePrice(price) {
+            if (price === "未取得") return 0;
+            return parseInt(price.replace(/,/g, ''));
+        }
+        
+        // データ初期化
+        function initializeData() {
+            currentData = Object.values(equipmentData).filter(item => 
+                item.item_name && item.item_name.trim() !== ""
+            );
+            updateStats();
+            renderTable();
+        }
+        
+        // 統計情報更新
+        function updateStats() {
+            const prices = currentData.map(item => parsePrice(item.item_price)).filter(p => p > 0);
+            const totalItems = currentData.length;
+            const avgPrice = prices.length > 0 ? Math.round(prices.reduce((a, b) => a + b, 0) / prices.length) : 0;
+            const maxPrice = prices.length > 0 ? Math.max(...prices) : 0;
+            
+            document.getElementById('totalItems').textContent = totalItems;
+            document.getElementById('avgPrice').textContent = avgPrice.toLocaleString() + '円';
+            document.getElementById('maxPrice').textContent = maxPrice.toLocaleString() + '円';
+        }
+        
+        // テーブル描画
+        function renderTable(data = currentData) {
+            const tableBody = document.getElementById('tableBody');
+            tableBody.innerHTML = '';
+            
+            data.forEach(item => {
+                const row = tableBody.insertRow();
+                row.innerHTML = `
+                    <td><img src="${item.image_url}" alt="${item.item_name}" class="item-image" onerror="this.style.display='none'"></td>
+                    <td>${item.item_name}</td>
+                    <td class="price">${formatPrice(item.item_price)}</td>
+                    <td>${item.item_id}</td>
+                    <td><span class="status-badge">${item.status}</span></td>
+                `;
+            });
+        }
+        
+        // 検索機能
+        function setupSearch() {
+            const searchInput = document.getElementById('searchInput');
+            const categoryFilter = document.getElementById('categoryFilter');
+            const priceFilter = document.getElementById('priceFilter');
+            
+            function filterData() {
+                let filtered = currentData;
+                
+                // 名前検索
+                const searchTerm = searchInput.value.toLowerCase();
+                if (searchTerm) {
+                    filtered = filtered.filter(item => 
+                        item.item_name.toLowerCase().includes(searchTerm)
+                    );
+                }
+                
+                // カテゴリフィルター
+                const category = categoryFilter.value;
+                if (category) {
+                    filtered = filtered.filter(item => 
+                        item.item_name.includes(category)
+                    );
+                }
+                
+                // 価格フィルター
+                const priceRange = priceFilter.value;
+                if (priceRange) {
+                    const [min, max] = priceRange.split('-').map(Number);
+                    filtered = filtered.filter(item => {
+                        const price = parsePrice(item.item_price);
+                        return price >= min && price <= max;
+                    });
+                }
+                
+                renderTable(filtered);
+            }
+            
+            searchInput.addEventListener('input', filterData);
+            categoryFilter.addEventListener('change', filterData);
+            priceFilter.addEventListener('change', filterData);
+        }
+        
+        // ソート機能
+        function sortTable(columnIndex) {
+            const isAscending = sortDirection[columnIndex] !== true;
+            sortDirection = {};
+            sortDirection[columnIndex] = isAscending;
+            
+            const tableBody = document.getElementById('tableBody');
+            const rows = Array.from(tableBody.rows);
+            
+            rows.sort((a, b) => {
+                let aVal = a.cells[columnIndex].textContent.trim();
+                let bVal = b.cells[columnIndex].textContent.trim();
+                
+                // 価格列の場合は数値として比較
+                if (columnIndex === 2) {
+                    aVal = parsePrice(aVal.replace('円', ''));
+                    bVal = parsePrice(bVal.replace('円', ''));
+                    return isAscending ? aVal - bVal : bVal - aVal;
+                }
+                
+                // 文字列として比較
+                if (isAscending) {
+                    return aVal.localeCompare(bVal, 'ja');
+                } else {
+                    return bVal.localeCompare(aVal, 'ja');
+                }
+            });
+            
+            // ソートされた行を再配置
+            rows.forEach(row => tableBody.appendChild(row));
+        }
+        
+        // 初期化
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeData();
+            setupSearch();
+        });
+    </script>
+</body>
+</html>
