@@ -3,60 +3,173 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MapleStory装備価格一覧</title>
+    <title>MapleStory装備価格一覧 - リアルタイム価格追跡</title>
     <style>
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        * {
             margin: 0;
-            padding: 20px;
-            background-color: #f5f5f5;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', 'Yu Gothic', 'Hiragino Kaku Gothic ProN', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+            line-height: 1.6;
         }
         
         .container {
-            max-width: 1200px;
+            max-width: 1400px;
             margin: 0 auto;
-            background: white;
-            border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            overflow: hidden;
+            background: rgba(255, 255, 255, 0.95);
+            min-height: 100vh;
+            backdrop-filter: blur(10px);
         }
         
         .header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
             color: white;
-            padding: 20px;
+            padding: 30px 20px;
             text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .header::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="25" cy="25" r="1" fill="rgba(255,255,255,0.1)"/><circle cx="75" cy="75" r="1" fill="rgba(255,255,255,0.1)"/></svg>');
+            animation: float 20s infinite linear;
+            pointer-events: none;
+        }
+        
+        @keyframes float {
+            0% { transform: translate(-50%, -50%) rotate(0deg); }
+            100% { transform: translate(-50%, -50%) rotate(360deg); }
+        }
+        
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            position: relative;
+            z-index: 1;
+        }
+        
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+            position: relative;
+            z-index: 1;
+        }
+        
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            padding: 25px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #dee2e6;
+        }
+        
+        .stat-item {
+            text-align: center;
+            padding: 20px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease;
+        }
+        
+        .stat-item:hover {
+            transform: translateY(-5px);
+        }
+        
+        .stat-number {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 5px;
+        }
+        
+        .stat-label {
+            font-size: 0.9rem;
+            color: #6c757d;
+            text-transform: uppercase;
+            letter-spacing: 1px;
         }
         
         .controls {
-            padding: 20px;
+            padding: 25px;
+            background: white;
             border-bottom: 1px solid #eee;
-            display: flex;
+            display: grid;
+            grid-template-columns: 2fr 1fr 1fr 1fr auto;
             gap: 15px;
-            flex-wrap: wrap;
             align-items: center;
         }
         
-        .search-box {
-            flex: 1;
-            min-width: 200px;
-            padding: 10px;
+        .search-box, .filter-select {
+            padding: 12px 15px;
             border: 2px solid #ddd;
-            border-radius: 5px;
+            border-radius: 8px;
             font-size: 14px;
+            transition: border-color 0.3s ease;
         }
         
-        .filter-select {
-            padding: 10px;
-            border: 2px solid #ddd;
-            border-radius: 5px;
+        .search-box:focus, .filter-select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        
+        .refresh-btn {
+            padding: 12px 20px;
+            background: #28a745;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background 0.3s ease;
+        }
+        
+        .refresh-btn:hover {
+            background: #218838;
+        }
+        
+        .pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            padding: 20px;
+            background: #f8f9fa;
+        }
+        
+        .page-btn {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
             background: white;
+            cursor: pointer;
+            border-radius: 5px;
+            transition: all 0.3s ease;
+        }
+        
+        .page-btn:hover, .page-btn.active {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
         }
         
         .table-container {
             overflow-x: auto;
             max-height: 600px;
             overflow-y: auto;
+            background: white;
         }
         
         table {
@@ -66,78 +179,110 @@
         }
         
         th {
-            background: #f8f9fa;
-            padding: 12px 8px;
+            background: #2c3e50;
+            color: white;
+            padding: 15px 10px;
             text-align: left;
-            border-bottom: 2px solid #dee2e6;
             position: sticky;
             top: 0;
             cursor: pointer;
             user-select: none;
+            font-weight: 600;
+            z-index: 10;
         }
         
         th:hover {
-            background: #e9ecef;
+            background: #34495e;
+        }
+        
+        th .sort-icon {
+            margin-left: 5px;
+            opacity: 0.7;
         }
         
         td {
-            padding: 8px;
-            border-bottom: 1px solid #dee2e6;
+            padding: 12px 10px;
+            border-bottom: 1px solid #eee;
+            vertical-align: middle;
         }
         
         tr:hover {
-            background-color: #f8f9fa;
+            background-color: rgba(102, 126, 234, 0.1);
         }
         
         .item-image {
-            width: 32px;
-            height: 32px;
+            width: 40px;
+            height: 40px;
             object-fit: contain;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        
+        .item-name {
+            font-weight: 600;
+            color: #2c3e50;
         }
         
         .price {
             font-weight: bold;
             color: #28a745;
             text-align: right;
+            font-size: 1.1rem;
+        }
+        
+        .price.high {
+            color: #dc3545;
+        }
+        
+        .price.medium {
+            color: #ffc107;
         }
         
         .status-badge {
-            padding: 4px 8px;
-            border-radius: 12px;
+            padding: 6px 12px;
+            border-radius: 20px;
             font-size: 12px;
+            font-weight: bold;
             background: #28a745;
             color: white;
+            display: inline-block;
         }
         
-        .stats {
-            display: flex;
-            justify-content: space-around;
-            padding: 15px;
-            background: #f8f9fa;
-            border-bottom: 1px solid #dee2e6;
-        }
-        
-        .stat-item {
+        .loading {
             text-align: center;
-        }
-        
-        .stat-number {
-            font-size: 24px;
-            font-weight: bold;
-            color: #495057;
-        }
-        
-        .stat-label {
-            font-size: 12px;
+            padding: 40px;
+            font-size: 1.2rem;
             color: #6c757d;
+        }
+        
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px;
+        }
+        
+        @media (max-width: 768px) {
+            .controls {
+                grid-template-columns: 1fr;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .stats {
+                grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            }
         }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>MapleStory装備価格一覧</h1>
-            <p>最新の装備アイテム価格情報</p>
+            <h1>🍁 MapleStory装備価格一覧</h1>
+            <p>リアルタイム価格追跡システム - 最新の装備アイテム価格情報</p>
         </div>
         
         <div class="stats" id="stats">
@@ -153,185 +298,402 @@
                 <div class="stat-number" id="maxPrice">-</div>
                 <div class="stat-label">最高価格</div>
             </div>
+            <div class="stat-item">
+                <div class="stat-number" id="updateTime">-</div>
+                <div class="stat-label">最終更新</div>
+            </div>
         </div>
         
         <div class="controls">
-            <input type="text" id="searchInput" class="search-box" placeholder="アイテム名で検索...">
+            <input type="text" id="searchInput" class="search-box" placeholder="🔍 アイテム名で検索...">
             <select id="categoryFilter" class="filter-select">
                 <option value="">すべてのカテゴリ</option>
-                <option value="Staff">杖</option>
-                <option value="Wand">ワンド</option>
-                <option value="Book">魔導書</option>
-                <option value="Bow">弓</option>
-                <option value="Sword">剣</option>
-                <option value="Axe">斧</option>
-                <option value="Hammer">ハンマー</option>
-                <option value="Dagger">短剣</option>
-                <option value="Guards">爪</option>
             </select>
             <select id="priceFilter" class="filter-select">
                 <option value="">すべての価格帯</option>
-                <option value="0-500000">50万以下</option>
-                <option value="500000-1000000">50万-100万</option>
-                <option value="1000000-5000000">100万-500万</option>
-                <option value="5000000-999999999">500万以上</option>
+                <option value="0-500000">50万円以下</option>
+                <option value="500000-1000000">50万-100万円</option>
+                <option value="1000000-5000000">100万-500万円</option>
+                <option value="5000000-10000000">500万-1000万円</option>
+                <option value="10000000-999999999">1000万円以上</option>
             </select>
+            <select id="itemsPerPage" class="filter-select">
+                <option value="25">25件表示</option>
+                <option value="50" selected>50件表示</option>
+                <option value="100">100件表示</option>
+                <option value="all">すべて表示</option>
+            </select>
+            <button id="refreshBtn" class="refresh-btn">🔄 更新</button>
         </div>
+        
+        <div class="pagination" id="topPagination"></div>
         
         <div class="table-container">
             <table id="equipmentTable">
                 <thead>
                     <tr>
-                        <th onclick="sortTable(0)">画像</th>
-                        <th onclick="sortTable(1)">アイテム名 ↕</th>
-                        <th onclick="sortTable(2)">価格 ↕</th>
-                        <th onclick="sortTable(3)">アイテムID</th>
-                        <th onclick="sortTable(4)">ステータス</th>
+                        <th onclick="sortTable('image')">画像</th>
+                        <th onclick="sortTable('name')">アイテム名 <span class="sort-icon">↕</span></th>
+                        <th onclick="sortTable('price')">価格 <span class="sort-icon">↕</span></th>
+                        <th onclick="sortTable('id')">アイテムID <span class="sort-icon">↕</span></th>
+                        <th onclick="sortTable('status')">ステータス</th>
                     </tr>
                 </thead>
                 <tbody id="tableBody">
-                    <!-- データはJavaScriptで動的に生成 -->
+                    <!-- データは動的に生成 -->
                 </tbody>
             </table>
         </div>
+        
+        <div class="pagination" id="bottomPagination"></div>
+        
+        <div id="loadingIndicator" class="loading" style="display: none;">
+            データを読み込んでいます...
+        </div>
+        
+        <div id="errorMessage" class="error" style="display: none;"></div>
     </div>
 
     <script>
-        // JSONデータをここに貼り付け
-        const equipmentData = [1]; // アップロードされたJSONデータ
-        
-        let currentData = [];
-        let sortDirection = {};
-        
-        // 数値フォーマット関数
-        function formatPrice(price) {
-            if (price === "未取得") return price;
-            return parseInt(price.replace(/,/g, '')).toLocaleString() + '円';
-        }
-        
-        // 価格を数値に変換
-        function parsePrice(price) {
-            if (price === "未取得") return 0;
-            return parseInt(price.replace(/,/g, ''));
-        }
-        
-        // データ初期化
-        function initializeData() {
-            currentData = Object.values(equipmentData).filter(item => 
-                item.item_name && item.item_name.trim() !== ""
-            );
-            updateStats();
-            renderTable();
-        }
-        
-        // 統計情報更新
-        function updateStats() {
-            const prices = currentData.map(item => parsePrice(item.item_price)).filter(p => p > 0);
-            const totalItems = currentData.length;
-            const avgPrice = prices.length > 0 ? Math.round(prices.reduce((a, b) => a + b, 0) / prices.length) : 0;
-            const maxPrice = prices.length > 0 ? Math.max(...prices) : 0;
-            
-            document.getElementById('totalItems').textContent = totalItems;
-            document.getElementById('avgPrice').textContent = avgPrice.toLocaleString() + '円';
-            document.getElementById('maxPrice').textContent = maxPrice.toLocaleString() + '円';
-        }
-        
-        // テーブル描画
-        function renderTable(data = currentData) {
-            const tableBody = document.getElementById('tableBody');
-            tableBody.innerHTML = '';
-            
-            data.forEach(item => {
-                const row = tableBody.insertRow();
-                row.innerHTML = `
-                    <td><img src="${item.image_url}" alt="${item.item_name}" class="item-image" onerror="this.style.display='none'"></td>
-                    <td>${item.item_name}</td>
-                    <td class="price">${formatPrice(item.item_price)}</td>
-                    <td>${item.item_id}</td>
-                    <td><span class="status-badge">${item.status}</span></td>
-                `;
-            });
-        }
-        
-        // 検索機能
-        function setupSearch() {
-            const searchInput = document.getElementById('searchInput');
-            const categoryFilter = document.getElementById('categoryFilter');
-            const priceFilter = document.getElementById('priceFilter');
-            
-            function filterData() {
-                let filtered = currentData;
+        // パフォーマンス最適化のためのクラス[5]
+        class MapleStoryPriceTracker {
+            constructor() {
+                this.rawData = {};
+                this.filteredData = [];
+                this.currentPage = 1;
+                this.itemsPerPage = 50;
+                this.sortField = 'name';
+                this.sortDirection = 'asc';
+                this.cache = new Map();
                 
-                // 名前検索
-                const searchTerm = searchInput.value.toLowerCase();
-                if (searchTerm) {
-                    filtered = filtered.filter(item => 
-                        item.item_name.toLowerCase().includes(searchTerm)
-                    );
-                }
-                
-                // カテゴリフィルター
-                const category = categoryFilter.value;
-                if (category) {
-                    filtered = filtered.filter(item => 
-                        item.item_name.includes(category)
-                    );
-                }
-                
-                // 価格フィルター
-                const priceRange = priceFilter.value;
-                if (priceRange) {
-                    const [min, max] = priceRange.split('-').map(Number);
-                    filtered = filtered.filter(item => {
-                        const price = parsePrice(item.item_price);
-                        return price >= min && price <= max;
-                    });
-                }
-                
-                renderTable(filtered);
+                this.init();
             }
             
-            searchInput.addEventListener('input', filterData);
-            categoryFilter.addEventListener('change', filterData);
-            priceFilter.addEventListener('change', filterData);
-        }
-        
-        // ソート機能
-        function sortTable(columnIndex) {
-            const isAscending = sortDirection[columnIndex] !== true;
-            sortDirection = {};
-            sortDirection[columnIndex] = isAscending;
+            async init() {
+                try {
+                    this.showLoading(true);
+                    await this.loadData();
+                    this.setupEventListeners();
+                    this.generateCategories();
+                    this.applyFilters();
+                    this.updateStats();
+                    this.renderTable();
+                    this.showLoading(false);
+                } catch (error) {
+                    this.showError('データの読み込みに失敗しました: ' + error.message);
+                }
+            }
             
-            const tableBody = document.getElementById('tableBody');
-            const rows = Array.from(tableBody.rows);
-            
-            rows.sort((a, b) => {
-                let aVal = a.cells[columnIndex].textContent.trim();
-                let bVal = b.cells[columnIndex].textContent.trim();
+            async loadData() {
+                // キャッシュ確認[5]
+                const cached = localStorage.getItem('equipmentDataCache');
+                const cacheTime = localStorage.getItem('equipmentDataCacheTime');
                 
-                // 価格列の場合は数値として比較
-                if (columnIndex === 2) {
-                    aVal = parsePrice(aVal.replace('円', ''));
-                    bVal = parsePrice(bVal.replace('円', ''));
-                    return isAscending ? aVal - bVal : bVal - aVal;
+                if (cached && cacheTime && Date.now() - parseInt(cacheTime) < 300000) {
+                    this.rawData = JSON.parse(cached);
+                    return;
                 }
                 
-                // 文字列として比較
-                if (isAscending) {
-                    return aVal.localeCompare(bVal, 'ja');
+                try {
+                    // GitHub Pages対応の相対パス[4]
+                    const response = await fetch('./data/equipment_prices.json');
+                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                    
+                    this.rawData = await response.json();
+                    
+                    // キャッシュに保存[5]
+                    localStorage.setItem('equipmentDataCache', JSON.stringify(this.rawData));
+                    localStorage.setItem('equipmentDataCacheTime', Date.now().toString());
+                } catch (error) {
+                    // フォールバック: 直接埋め込みデータ使用
+                    console.warn('JSONファイル読み込み失敗、埋め込みデータを使用:', error);
+                    this.rawData = this.getFallbackData();
+                }
+            }
+            
+            getFallbackData() {
+                // アップロードされたJSONデータをフォールバック用に埋め込み[1]
+                return {
+                    "1382285": {"item_name": "Unchained Staff", "image_url": "https://api-static.msu.io/itemimages/icon/1382285.png", "item_id": "1382285", "item_price": "2,794,999", "status": "価格更新済み"},
+                    "1352232": {"item_name": "Rusty Book", "image_url": "https://api-static.msu.io/itemimages/icon/1352232.png", "item_id": "1352232", "item_price": "1,400,000", "status": "価格更新済み"},
+                    // ... 実際のデータはここに全て含める
+                };
+            }
+            
+            setupEventListeners() {
+                document.getElementById('searchInput').addEventListener('input', 
+                    this.debounce(() => this.applyFilters(), 300));
+                document.getElementById('categoryFilter').addEventListener('change', () => this.applyFilters());
+                document.getElementById('priceFilter').addEventListener('change', () => this.applyFilters());
+                document.getElementById('itemsPerPage').addEventListener('change', (e) => {
+                    this.itemsPerPage = e.target.value === 'all' ? Infinity : parseInt(e.target.value);
+                    this.currentPage = 1;
+                    this.renderTable();
+                });
+                document.getElementById('refreshBtn').addEventListener('click', () => this.refreshData());
+            }
+            
+            debounce(func, wait) {
+                let timeout;
+                return function executedFunction(...args) {
+                    const later = () => {
+                        clearTimeout(timeout);
+                        func(...args);
+                    };
+                    clearTimeout(timeout);
+                    timeout = setTimeout(later, wait);
+                };
+            }
+            
+            generateCategories() {
+                const categories = new Set();
+                Object.values(this.rawData).forEach(item => {
+                    if (item.item_name) {
+                        // 武器種別を判定[1]
+                        if (item.item_name.includes('Staff')) categories.add('Staff');
+                        if (item.item_name.includes('Wand')) categories.add('Wand');
+                        if (item.item_name.includes('Book')) categories.add('Book');
+                        if (item.item_name.includes('Bow')) categories.add('Bow');
+                        if (item.item_name.includes('Sword')) categories.add('Sword');
+                        if (item.item_name.includes('Axe')) categories.add('Axe');
+                        if (item.item_name.includes('Hammer')) categories.add('Hammer');
+                        if (item.item_name.includes('Dagger')) categories.add('Dagger');
+                        if (item.item_name.includes('Guards') || item.item_name.includes('Claw')) categories.add('Guards');
+                        if (item.item_name.includes('Crossbow')) categories.add('Crossbow');
+                        if (item.item_name.includes('Spear')) categories.add('Spear');
+                        if (item.item_name.includes('Pistol') || item.item_name.includes('Gun')) categories.add('Gun');
+                        if (item.item_name.includes('Armor') || item.item_name.includes('Suit')) categories.add('Armor');
+                        if (item.item_name.includes('Helm') || item.item_name.includes('Hat')) categories.add('Helm');
+                        if (item.item_name.includes('Boots') || item.item_name.includes('Shoes')) categories.add('Boots');
+                        if (item.item_name.includes('Cape')) categories.add('Cape');
+                        if (item.item_name.includes('Gloves') || item.item_name.includes('Hands')) categories.add('Gloves');
+                        if (item.item_name.includes('Ring')) categories.add('Ring');
+                        if (item.item_name.includes('Necklace') || item.item_name.includes('Pendant')) categories.add('Necklace');
+                        if (item.item_name.includes('Earrings')) categories.add('Earrings');
+                        if (item.item_name.includes('Belt')) categories.add('Belt');
+                        if (item.item_name.includes('Badge')) categories.add('Badge');
+                        if (item.item_name.includes('Emblem')) categories.add('Emblem');
+                    }
+                });
+                
+                const categoryFilter = document.getElementById('categoryFilter');
+                Array.from(categories).sort().forEach(category => {
+                    const option = document.createElement('option');
+                    option.value = category;
+                    option.textContent = category;
+                    categoryFilter.appendChild(option);
+                });
+            }
+            
+            parsePrice(priceStr) {
+                if (!priceStr || priceStr === '未取得') return 0;
+                return parseInt(priceStr.replace(/,/g, ''));
+            }
+            
+            formatPrice(price) {
+                if (price === 0) return '未取得';
+                return price.toLocaleString() + '円';
+            }
+            
+            getPriceClass(price) {
+                if (price >= 10000000) return 'high';
+                if (price >= 1000000) return 'medium';
+                return '';
+            }
+            
+            applyFilters() {
+                const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+                const category = document.getElementById('categoryFilter').value;
+                const priceRange = document.getElementById('priceFilter').value;
+                
+                // 有効なデータのみフィルタ[5]
+                this.filteredData = Object.values(this.rawData).filter(item => {
+                    if (!item.item_name || item.item_name.trim() === '') return false;
+                    
+                    // 検索フィルタ
+                    if (searchTerm && !item.item_name.toLowerCase().includes(searchTerm)) return false;
+                    
+                    // カテゴリフィルタ
+                    if (category && !item.item_name.includes(category)) return false;
+                    
+                    // 価格フィルタ
+                    if (priceRange) {
+                        const price = this.parsePrice(item.item_price);
+                        const [min, max] = priceRange.split('-').map(Number);
+                        if (price < min || price > max) return false;
+                    }
+                    
+                    return true;
+                });
+                
+                this.currentPage = 1;
+                this.updateStats();
+                this.renderTable();
+            }
+            
+            sortTable(field) {
+                if (this.sortField === field) {
+                    this.sortDirection = this.sortDirection === 'asc' ? 'desc' : 'asc';
                 } else {
-                    return bVal.localeCompare(aVal, 'ja');
+                    this.sortField = field;
+                    this.sortDirection = 'asc';
                 }
-            });
+                
+                this.filteredData.sort((a, b) => {
+                    let aVal, bVal;
+                    
+                    switch (field) {
+                        case 'name':
+                            aVal = a.item_name || '';
+                            bVal = b.item_name || '';
+                            break;
+                        case 'price':
+                            aVal = this.parsePrice(a.item_price);
+                            bVal = this.parsePrice(b.item_price);
+                            break;
+                        case 'id':
+                            aVal = parseInt(a.item_id) || 0;
+                            bVal = parseInt(b.item_id) || 0;
+                            break;
+                        case 'status':
+                            aVal = a.status || '';
+                            bVal = b.status || '';
+                            break;
+                        default:
+                            return 0;
+                    }
+                    
+                    if (typeof aVal === 'string') {
+                        return this.sortDirection === 'asc' 
+                            ? aVal.localeCompare(bVal, 'ja')
+                            : bVal.localeCompare(aVal, 'ja');
+                    } else {
+                        return this.sortDirection === 'asc' ? aVal - bVal : bVal - aVal;
+                    }
+                });
+                
+                this.renderTable();
+            }
             
-            // ソートされた行を再配置
-            rows.forEach(row => tableBody.appendChild(row));
+            updateStats() {
+                const prices = this.filteredData
+                    .map(item => this.parsePrice(item.item_price))
+                    .filter(p => p > 0);
+                
+                const total = this.filteredData.length;
+                const avg = prices.length > 0 ? Math.round(prices.reduce((a, b) => a + b, 0) / prices.length) : 0;
+                const max = prices.length > 0 ? Math.max(...prices) : 0;
+                
+                document.getElementById('totalItems').textContent = total.toLocaleString();
+                document.getElementById('avgPrice').textContent = this.formatPrice(avg);
+                document.getElementById('maxPrice').textContent = this.formatPrice(max);
+                document.getElementById('updateTime').textContent = new Date().toLocaleTimeString('ja-JP');
+            }
+            
+            renderTable() {
+                const start = (this.currentPage - 1) * this.itemsPerPage;
+                const end = this.itemsPerPage === Infinity ? this.filteredData.length : start + this.itemsPerPage;
+                const pageData = this.filteredData.slice(start, end);
+                
+                const tableBody = document.getElementById('tableBody');
+                tableBody.innerHTML = '';
+                
+                pageData.forEach(item => {
+                    const price = this.parsePrice(item.item_price);
+                    const row = tableBody.insertRow();
+                    row.innerHTML = `
+                        <td><img src="${item.image_url}" alt="${item.item_name}" class="item-image" loading="lazy" onerror="this.style.display='none'"></td>
+                        <td class="item-name">${item.item_name}</td>
+                        <td class="price ${this.getPriceClass(price)}">${this.formatPrice(price)}</td>
+                        <td>${item.item_id}</td>
+                        <td><span class="status-badge">${item.status}</span></td>
+                    `;
+                });
+                
+                this.renderPagination();
+            }
+            
+            renderPagination() {
+                if (this.itemsPerPage === Infinity) {
+                    document.getElementById('topPagination').innerHTML = '';
+                    document.getElementById('bottomPagination').innerHTML = '';
+                    return;
+                }
+                
+                const totalPages = Math.ceil(this.filteredData.length / this.itemsPerPage);
+                const paginationHTML = this.createPaginationHTML(totalPages);
+                
+                document.getElementById('topPagination').innerHTML = paginationHTML;
+                document.getElementById('bottomPagination').innerHTML = paginationHTML;
+            }
+            
+            createPaginationHTML(totalPages) {
+                if (totalPages <= 1) return '';
+                
+                let html = '';
+                
+                // 前へボタン
+                html += `<button class="page-btn" onclick="tracker.goToPage(${this.currentPage - 1})" ${this.currentPage === 1 ? 'disabled' : ''}>‹ 前へ</button>`;
+                
+                // ページ番号
+                const start = Math.max(1, this.currentPage - 2);
+                const end = Math.min(totalPages, this.currentPage + 2);
+                
+                if (start > 1) {
+                    html += `<button class="page-btn" onclick="tracker.goToPage(1)">1</button>`;
+                    if (start > 2) html += '<span>...</span>';
+                }
+                
+                for (let i = start; i <= end; i++) {
+                    html += `<button class="page-btn ${i === this.currentPage ? 'active' : ''}" onclick="tracker.goToPage(${i})">${i}</button>`;
+                }
+                
+                if (end < totalPages) {
+                    if (end < totalPages - 1) html += '<span>...</span>';
+                    html += `<button class="page-btn" onclick="tracker.goToPage(${totalPages})">${totalPages}</button>`;
+                }
+                
+                // 次へボタン
+                html += `<button class="page-btn" onclick="tracker.goToPage(${this.currentPage + 1})" ${this.currentPage === totalPages ? 'disabled' : ''}>次へ ›</button>`;
+                
+                return html;
+            }
+            
+            goToPage(page) {
+                const totalPages = Math.ceil(this.filteredData.length / this.itemsPerPage);
+                if (page < 1 || page > totalPages) return;
+                
+                this.currentPage = page;
+                this.renderTable();
+            }
+            
+            async refreshData() {
+                localStorage.removeItem('equipmentDataCache');
+                localStorage.removeItem('equipmentDataCacheTime');
+                await this.init();
+            }
+            
+            showLoading(show) {
+                document.getElementById('loadingIndicator').style.display = show ? 'block' : 'none';
+            }
+            
+            showError(message) {
+                const errorDiv = document.getElementById('errorMessage');
+                errorDiv.textContent = message;
+                errorDiv.style.display = 'block';
+                this.showLoading(false);
+            }
         }
         
-        // 初期化
+        // グローバルスコープで使用するための関数[3]
+        function sortTable(field) {
+            tracker.sortTable(field);
+        }
+        
+        // アプリケーション初期化[2]
+        let tracker;
         document.addEventListener('DOMContentLoaded', function() {
-            initializeData();
-            setupSearch();
+            tracker = new MapleStoryPriceTracker();
         });
     </script>
 </body>
