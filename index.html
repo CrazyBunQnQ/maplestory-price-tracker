@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MapleStory装備価格一覧 - リアルタイム価格追跡</title>
+    <title>MapleStory装備価格一覧 - 30分毎価格追跡システム</title>
     <style>
         * {
             margin: 0;
@@ -24,6 +24,12 @@
             background: rgba(255, 255, 255, 0.95);
             min-height: 100vh;
             backdrop-filter: blur(10px);
+            display: flex;
+        }
+        
+        .main-content {
+            flex: 1;
+            margin-right: 320px; /* スペース for sidebar */
         }
         
         .header {
@@ -53,70 +59,79 @@
         }
         
         .header h1 {
-            font-size: 2.5rem;
+            font-size: 2.2rem;
             margin-bottom: 10px;
             position: relative;
             z-index: 1;
         }
         
         .header p {
-            font-size: 1.1rem;
+            font-size: 1rem;
             opacity: 0.9;
             position: relative;
             z-index: 1;
         }
         
+        .price-update-notice {
+            background: #f39c12;
+            color: white;
+            padding: 10px;
+            text-align: center;
+            font-weight: bold;
+            border-bottom: 2px solid #e67e22;
+        }
+        
         .stats {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px;
-            padding: 25px;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 15px;
+            padding: 20px;
             background: #f8f9fa;
             border-bottom: 1px solid #dee2e6;
         }
         
         .stat-item {
             text-align: center;
-            padding: 20px;
+            padding: 15px;
             background: white;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
             transition: transform 0.3s ease;
         }
         
         .stat-item:hover {
-            transform: translateY(-5px);
+            transform: translateY(-3px);
         }
         
         .stat-number {
-            font-size: 2rem;
+            font-size: 1.6rem;
             font-weight: bold;
             color: #2c3e50;
             margin-bottom: 5px;
         }
         
         .stat-label {
-            font-size: 0.9rem;
+            font-size: 0.8rem;
             color: #6c757d;
             text-transform: uppercase;
             letter-spacing: 1px;
         }
         
         .controls {
-            padding: 25px;
+            padding: 20px;
             background: white;
             border-bottom: 1px solid #eee;
             display: grid;
-            grid-template-columns: 2fr 1fr 1fr 1fr auto;
-            gap: 15px;
+            grid-template-columns: 2fr 1fr 1fr 1fr 1fr auto;
+            gap: 12px;
             align-items: center;
         }
         
         .search-box, .filter-select {
-            padding: 12px 15px;
+            padding: 10px 12px;
             border: 2px solid #ddd;
-            border-radius: 8px;
-            font-size: 14px;
+            border-radius: 6px;
+            font-size: 13px;
             transition: border-color 0.3s ease;
         }
         
@@ -127,14 +142,15 @@
         }
         
         .refresh-btn {
-            padding: 12px 20px;
+            padding: 10px 16px;
             background: #28a745;
             color: white;
             border: none;
-            border-radius: 8px;
+            border-radius: 6px;
             cursor: pointer;
             font-weight: bold;
             transition: background 0.3s ease;
+            font-size: 13px;
         }
         
         .refresh-btn:hover {
@@ -145,18 +161,19 @@
             display: flex;
             justify-content: center;
             align-items: center;
-            gap: 10px;
-            padding: 20px;
+            gap: 8px;
+            padding: 15px;
             background: #f8f9fa;
         }
         
         .page-btn {
-            padding: 8px 12px;
+            padding: 6px 10px;
             border: 1px solid #ddd;
             background: white;
             cursor: pointer;
-            border-radius: 5px;
+            border-radius: 4px;
             transition: all 0.3s ease;
+            font-size: 12px;
         }
         
         .page-btn:hover, .page-btn.active {
@@ -175,13 +192,13 @@
         table {
             width: 100%;
             border-collapse: collapse;
-            font-size: 14px;
+            font-size: 13px;
         }
         
         th {
             background: #2c3e50;
             color: white;
-            padding: 15px 10px;
+            padding: 12px 8px;
             text-align: left;
             position: sticky;
             top: 0;
@@ -189,6 +206,7 @@
             user-select: none;
             font-weight: 600;
             z-index: 10;
+            font-size: 12px;
         }
         
         th:hover {
@@ -196,12 +214,12 @@
         }
         
         th .sort-icon {
-            margin-left: 5px;
+            margin-left: 4px;
             opacity: 0.7;
         }
         
         td {
-            padding: 12px 10px;
+            padding: 10px 8px;
             border-bottom: 1px solid #eee;
             vertical-align: middle;
         }
@@ -210,24 +228,33 @@
             background-color: rgba(102, 126, 234, 0.1);
         }
         
+        tr.selected {
+            background-color: rgba(40, 167, 69, 0.2);
+        }
+        
         .item-image {
-            width: 40px;
-            height: 40px;
+            width: 32px;
+            height: 32px;
             object-fit: contain;
-            border-radius: 5px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            border-radius: 4px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         }
         
         .item-name {
             font-weight: 600;
             color: #2c3e50;
+            cursor: pointer;
+        }
+        
+        .item-name:hover {
+            color: #667eea;
         }
         
         .price {
             font-weight: bold;
             color: #28a745;
             text-align: right;
-            font-size: 1.1rem;
+            font-size: 1rem;
         }
         
         .price.high {
@@ -239,19 +266,166 @@
         }
         
         .status-badge {
-            padding: 6px 12px;
-            border-radius: 20px;
-            font-size: 12px;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 10px;
             font-weight: bold;
             background: #28a745;
             color: white;
             display: inline-block;
         }
         
+        .job-badge {
+            padding: 2px 6px;
+            border-radius: 8px;
+            font-size: 9px;
+            font-weight: bold;
+            color: white;
+            display: inline-block;
+            margin: 1px;
+        }
+        
+        .job-warrior { background: #dc3545; }
+        .job-magician { background: #007bff; }
+        .job-bowman { background: #28a745; }
+        .job-thief { background: #6c757d; }
+        .job-pirate { background: #fd7e14; }
+        
+        .set-badge {
+            padding: 3px 6px;
+            border-radius: 10px;
+            font-size: 10px;
+            font-weight: bold;
+            background: #6f42c1;
+            color: white;
+            margin-left: 5px;
+        }
+        
+        /* サイドバー */
+        .sidebar {
+            position: fixed;
+            right: 0;
+            top: 0;
+            width: 300px;
+            height: 100vh;
+            background: white;
+            border-left: 2px solid #dee2e6;
+            display: flex;
+            flex-direction: column;
+            z-index: 1000;
+        }
+        
+        .sidebar-header {
+            background: #2c3e50;
+            color: white;
+            padding: 15px;
+            font-weight: bold;
+            text-align: center;
+        }
+        
+        .selected-items {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px;
+        }
+        
+        .selected-item {
+            display: flex;
+            align-items: center;
+            padding: 8px;
+            margin-bottom: 8px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            border-left: 4px solid #667eea;
+        }
+        
+        .selected-item img {
+            width: 24px;
+            height: 24px;
+            margin-right: 8px;
+        }
+        
+        .selected-item-info {
+            flex: 1;
+            font-size: 11px;
+        }
+        
+        .selected-item-name {
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 2px;
+        }
+        
+        .selected-item-price {
+            color: #28a745;
+            font-weight: bold;
+        }
+        
+        .remove-btn {
+            background: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            padding: 2px 6px;
+            cursor: pointer;
+            font-size: 10px;
+        }
+        
+        .total-section {
+            border-top: 2px solid #dee2e6;
+            padding: 15px;
+            background: #f8f9fa;
+        }
+        
+        .total-price {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 10px;
+        }
+        
+        .clear-all-btn {
+            width: 100%;
+            padding: 8px;
+            background: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        
+        .clear-all-btn:hover {
+            background: #c82333;
+        }
+        
+        .comparison-section {
+            margin-top: 10px;
+            padding: 10px;
+            background: #e9ecef;
+            border-radius: 4px;
+        }
+        
+        .comparison-title {
+            font-weight: bold;
+            font-size: 11px;
+            margin-bottom: 5px;
+            color: #495057;
+        }
+        
+        .comparison-item {
+            font-size: 10px;
+            margin-bottom: 3px;
+            padding: 3px 6px;
+            background: white;
+            border-radius: 3px;
+        }
+        
         .loading {
             text-align: center;
             padding: 40px;
-            font-size: 1.2rem;
+            font-size: 1.1rem;
             color: #6c757d;
         }
         
@@ -263,103 +437,150 @@
             margin: 20px;
         }
         
+        @media (max-width: 1200px) {
+            .main-content {
+                margin-right: 0;
+            }
+            
+            .sidebar {
+                display: none;
+            }
+        }
+        
         @media (max-width: 768px) {
             .controls {
                 grid-template-columns: 1fr;
             }
             
             .header h1 {
-                font-size: 2rem;
+                font-size: 1.8rem;
             }
             
             .stats {
-                grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+                grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
             }
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="header">
-            <h1>🍁 MapleStory装備価格一覧</h1>
-            <p>リアルタイム価格追跡システム - 最新の装備アイテム価格情報</p>
-        </div>
-        
-        <div class="stats" id="stats">
-            <div class="stat-item">
-                <div class="stat-number" id="totalItems">-</div>
-                <div class="stat-label">総アイテム数</div>
+        <div class="main-content">
+            <div class="header">
+                <h1>🍁 MapleStory装備価格一覧</h1>
+                <p>30分毎価格追跡システム - 装備アイテム価格情報</p>
             </div>
-            <div class="stat-item">
-                <div class="stat-number" id="avgPrice">-</div>
-                <div class="stat-label">平均価格</div>
+            
+            <div class="price-update-notice">
+                ⚠️ 価格は30分毎に更新されます（リアルタイム価格ではありません）
             </div>
-            <div class="stat-item">
-                <div class="stat-number" id="maxPrice">-</div>
-                <div class="stat-label">最高価格</div>
+            
+            <div class="stats" id="stats">
+                <div class="stat-item">
+                    <div class="stat-number" id="totalItems">-</div>
+                    <div class="stat-label">総アイテム数</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number" id="avgPrice">-</div>
+                    <div class="stat-label">平均価格</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number" id="maxPrice">-</div>
+                    <div class="stat-label">最高価格</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number" id="setCount">-</div>
+                    <div class="stat-label">セット装備数</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number" id="updateTime">-</div>
+                    <div class="stat-label">最終更新</div>
+                </div>
             </div>
-            <div class="stat-item">
-                <div class="stat-number" id="updateTime">-</div>
-                <div class="stat-label">最終更新</div>
+            
+            <div class="controls">
+                <input type="text" id="searchInput" class="search-box" placeholder="🔍 アイテム名で検索...">
+                <select id="categoryFilter" class="filter-select">
+                    <option value="">すべてのカテゴリ</option>
+                </select>
+                <select id="jobFilter" class="filter-select">
+                    <option value="">すべての職業</option>
+                    <option value="Warrior">戦士</option>
+                    <option value="Magician">魔法使い</option>
+                    <option value="Bowman">弓使い</option>
+                    <option value="Thief">盗賊</option>
+                    <option value="Pirate">海賊</option>
+                </select>
+                <select id="setFilter" class="filter-select">
+                    <option value="">すべてのセット</option>
+                </select>
+                <select id="priceFilter" class="filter-select">
+                    <option value="">すべての価格帯</option>
+                    <option value="0-500000">50万NESO以下</option>
+                    <option value="500000-1000000">50万-100万NESO</option>
+                    <option value="1000000-5000000">100万-500万NESO</option>
+                    <option value="5000000-10000000">500万-1000万NESO</option>
+                    <option value="10000000-999999999">1000万NESO以上</option>
+                </select>
+                <button id="refreshBtn" class="refresh-btn">🔄 更新</button>
+            </div>
+            
+            <div class="pagination" id="topPagination"></div>
+            
+            <div class="table-container">
+                <table id="equipmentTable">
+                    <thead>
+                        <tr>
+                            <th onclick="sortTable('image')">画像</th>
+                            <th onclick="sortTable('name')">アイテム名 <span class="sort-icon">↕</span></th>
+                            <th onclick="sortTable('price')">価格 <span class="sort-icon">↕</span></th>
+                            <th onclick="sortTable('category')">カテゴリ <span class="sort-icon">↕</span></th>
+                            <th onclick="sortTable('job')">職業 <span class="sort-icon">↕</span></th>
+                            <th onclick="sortTable('level')">要求Lv <span class="sort-icon">↕</span></th>
+                            <th onclick="sortTable('set')">セット <span class="sort-icon">↕</span></th>
+                            <th>選択</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody">
+                        <!-- データは動的に生成 -->
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="pagination" id="bottomPagination"></div>
+            
+            <div id="loadingIndicator" class="loading" style="display: none;">
+                データを読み込んでいます...
+            </div>
+            
+            <div id="errorMessage" class="error" style="display: none;"></div>
+        </div>
+        
+        <!-- サイドバー -->
+        <div class="sidebar">
+            <div class="sidebar-header">
+                選択済みアイテム
+            </div>
+            <div class="selected-items" id="selectedItems">
+                <!-- 選択されたアイテムが表示される -->
+            </div>
+            <div class="total-section">
+                <div class="total-price" id="totalPrice">合計: 0 NESO</div>
+                <button class="clear-all-btn" onclick="clearAllItems()">すべてクリア</button>
+                <div class="comparison-section" id="comparisonSection" style="display: none;">
+                    <div class="comparison-title">同系統装備比較</div>
+                    <div id="comparisonList"></div>
+                </div>
             </div>
         </div>
-        
-        <div class="controls">
-            <input type="text" id="searchInput" class="search-box" placeholder="🔍 アイテム名で検索...">
-            <select id="categoryFilter" class="filter-select">
-                <option value="">すべてのカテゴリ</option>
-            </select>
-            <select id="priceFilter" class="filter-select">
-                <option value="">すべての価格帯</option>
-                <option value="0-500000">50万円以下</option>
-                <option value="500000-1000000">50万-100万円</option>
-                <option value="1000000-5000000">100万-500万円</option>
-                <option value="5000000-10000000">500万-1000万円</option>
-                <option value="10000000-999999999">1000万円以上</option>
-            </select>
-            <select id="itemsPerPage" class="filter-select">
-                <option value="25">25件表示</option>
-                <option value="50" selected>50件表示</option>
-                <option value="100">100件表示</option>
-                <option value="all">すべて表示</option>
-            </select>
-            <button id="refreshBtn" class="refresh-btn">🔄 更新</button>
-        </div>
-        
-        <div class="pagination" id="topPagination"></div>
-        
-        <div class="table-container">
-            <table id="equipmentTable">
-                <thead>
-                    <tr>
-                        <th onclick="sortTable('image')">画像</th>
-                        <th onclick="sortTable('name')">アイテム名 <span class="sort-icon">↕</span></th>
-                        <th onclick="sortTable('price')">価格 <span class="sort-icon">↕</span></th>
-                        <th onclick="sortTable('id')">アイテムID <span class="sort-icon">↕</span></th>
-                        <th onclick="sortTable('status')">ステータス</th>
-                    </tr>
-                </thead>
-                <tbody id="tableBody">
-                    <!-- データは動的に生成 -->
-                </tbody>
-            </table>
-        </div>
-        
-        <div class="pagination" id="bottomPagination"></div>
-        
-        <div id="loadingIndicator" class="loading" style="display: none;">
-            データを読み込んでいます...
-        </div>
-        
-        <div id="errorMessage" class="error" style="display: none;"></div>
     </div>
 
     <script>
-        // パフォーマンス最適化のためのクラス[5]
+        // パフォーマンス最適化のためのクラス[5][6]
         class MapleStoryPriceTracker {
             constructor() {
                 this.rawData = {};
                 this.filteredData = [];
+                this.selectedItems = new Map();
                 this.currentPage = 1;
                 this.itemsPerPage = 50;
                 this.sortField = 'name';
@@ -374,7 +595,7 @@
                     this.showLoading(true);
                     await this.loadData();
                     this.setupEventListeners();
-                    this.generateCategories();
+                    this.generateFilters();
                     this.applyFilters();
                     this.updateStats();
                     this.renderTable();
@@ -395,7 +616,7 @@
                 }
                 
                 try {
-                    // GitHub Pages対応の相対パス[4]
+                    // GitHub Pages対応の相対パス
                     const response = await fetch('./data/equipment_prices.json');
                     if (!response.ok) throw new Error(`HTTP ${response.status}`);
                     
@@ -412,11 +633,10 @@
             }
             
             getFallbackData() {
-                // アップロードされたJSONデータをフォールバック用に埋め込み[1]
+                // 新しいJSONデータ構造に対応[1][2]
                 return {
-                    "1382285": {"item_name": "Unchained Staff", "image_url": "https://api-static.msu.io/itemimages/icon/1382285.png", "item_id": "1382285", "item_price": "2,794,999", "status": "価格更新済み"},
-                    "1352232": {"item_name": "Rusty Book", "image_url": "https://api-static.msu.io/itemimages/icon/1352232.png", "item_id": "1352232", "item_price": "1,400,000", "status": "価格更新済み"},
-                    // ... 実際のデータはここに全て含める
+                    "1382285": {"item_name": "Unchained Staff", "image_url": "https://api-static.msu.io/itemimages/icon/1382285.png", "item_id": "1382285", "item_price": "2,795,000", "status": "価格更新済み", "categories": ["Weapon", "One-handed Weapon", "Staff"], "required_level": "120", "required_jobs": ["Magician"]},
+                    // ... 他のデータ
                 };
             }
             
@@ -424,12 +644,9 @@
                 document.getElementById('searchInput').addEventListener('input', 
                     this.debounce(() => this.applyFilters(), 300));
                 document.getElementById('categoryFilter').addEventListener('change', () => this.applyFilters());
+                document.getElementById('jobFilter').addEventListener('change', () => this.applyFilters());
+                document.getElementById('setFilter').addEventListener('change', () => this.applyFilters());
                 document.getElementById('priceFilter').addEventListener('change', () => this.applyFilters());
-                document.getElementById('itemsPerPage').addEventListener('change', (e) => {
-                    this.itemsPerPage = e.target.value === 'all' ? Infinity : parseInt(e.target.value);
-                    this.currentPage = 1;
-                    this.renderTable();
-                });
                 document.getElementById('refreshBtn').addEventListener('click', () => this.refreshData());
             }
             
@@ -445,37 +662,24 @@
                 };
             }
             
-            generateCategories() {
+            generateFilters() {
+                // カテゴリフィルター生成[2]
                 const categories = new Set();
+                const setNames = new Set();
+                
                 Object.values(this.rawData).forEach(item => {
-                    if (item.item_name) {
-                        // 武器種別を判定[1]
-                        if (item.item_name.includes('Staff')) categories.add('Staff');
-                        if (item.item_name.includes('Wand')) categories.add('Wand');
-                        if (item.item_name.includes('Book')) categories.add('Book');
-                        if (item.item_name.includes('Bow')) categories.add('Bow');
-                        if (item.item_name.includes('Sword')) categories.add('Sword');
-                        if (item.item_name.includes('Axe')) categories.add('Axe');
-                        if (item.item_name.includes('Hammer')) categories.add('Hammer');
-                        if (item.item_name.includes('Dagger')) categories.add('Dagger');
-                        if (item.item_name.includes('Guards') || item.item_name.includes('Claw')) categories.add('Guards');
-                        if (item.item_name.includes('Crossbow')) categories.add('Crossbow');
-                        if (item.item_name.includes('Spear')) categories.add('Spear');
-                        if (item.item_name.includes('Pistol') || item.item_name.includes('Gun')) categories.add('Gun');
-                        if (item.item_name.includes('Armor') || item.item_name.includes('Suit')) categories.add('Armor');
-                        if (item.item_name.includes('Helm') || item.item_name.includes('Hat')) categories.add('Helm');
-                        if (item.item_name.includes('Boots') || item.item_name.includes('Shoes')) categories.add('Boots');
-                        if (item.item_name.includes('Cape')) categories.add('Cape');
-                        if (item.item_name.includes('Gloves') || item.item_name.includes('Hands')) categories.add('Gloves');
-                        if (item.item_name.includes('Ring')) categories.add('Ring');
-                        if (item.item_name.includes('Necklace') || item.item_name.includes('Pendant')) categories.add('Necklace');
-                        if (item.item_name.includes('Earrings')) categories.add('Earrings');
-                        if (item.item_name.includes('Belt')) categories.add('Belt');
-                        if (item.item_name.includes('Badge')) categories.add('Badge');
-                        if (item.item_name.includes('Emblem')) categories.add('Emblem');
+                    if (item.categories && item.categories.length > 0) {
+                        item.categories.forEach(cat => categories.add(cat));
+                    }
+                    
+                    // セット名の検出[4]
+                    const setName = this.detectSetName(item.item_name);
+                    if (setName) {
+                        setNames.add(setName);
                     }
                 });
                 
+                // カテゴリオプション追加
                 const categoryFilter = document.getElementById('categoryFilter');
                 Array.from(categories).sort().forEach(category => {
                     const option = document.createElement('option');
@@ -483,6 +687,43 @@
                     option.textContent = category;
                     categoryFilter.appendChild(option);
                 });
+                
+                // セットオプション追加
+                const setFilter = document.getElementById('setFilter');
+                Array.from(setNames).sort().forEach(setName => {
+                    const option = document.createElement('option');
+                    option.value = setName;
+                    option.textContent = setName + 'セット';
+                    setFilter.appendChild(option);
+                });
+            }
+            
+            detectSetName(itemName) {
+                // セット名の検出ロジック[4]
+                const setPatterns = [
+                    /^(Unchained)\s/i,
+                    /^(Royal Von Leon)\s/i,
+                    /^(Lionheart)\s/i,
+                    /^(Dragon Tail)\s/i,
+                    /^(Falcon Wing)\s/i,
+                    /^(Shark Tooth)\s/i,
+                    /^(Raven Horn)\s/i,
+                    /^(Eagle Eye)\s/i,
+                    /^(Necromancer)\s/i,
+                    /^(Necro)\s/i,
+                    /^(Zakum's Poisonic)\s/i,
+                    /^(Chaos)\s/i,
+                    /^(Enraged)\s/i,
+                    /^(Neophyte)\s/i
+                ];
+                
+                for (const pattern of setPatterns) {
+                    const match = itemName.match(pattern);
+                    if (match) {
+                        return match[1];
+                    }
+                }
+                return null;
             }
             
             parsePrice(priceStr) {
@@ -492,7 +733,7 @@
             
             formatPrice(price) {
                 if (price === 0) return '未取得';
-                return price.toLocaleString() + '円';
+                return price.toLocaleString() + ' NESO'; // 単位をNESOに変更[1]
             }
             
             getPriceClass(price) {
@@ -504,17 +745,24 @@
             applyFilters() {
                 const searchTerm = document.getElementById('searchInput').value.toLowerCase();
                 const category = document.getElementById('categoryFilter').value;
+                const job = document.getElementById('jobFilter').value;
+                const set = document.getElementById('setFilter').value;
                 const priceRange = document.getElementById('priceFilter').value;
                 
-                // 有効なデータのみフィルタ[5]
                 this.filteredData = Object.values(this.rawData).filter(item => {
                     if (!item.item_name || item.item_name.trim() === '') return false;
                     
                     // 検索フィルタ
                     if (searchTerm && !item.item_name.toLowerCase().includes(searchTerm)) return false;
                     
-                    // カテゴリフィルタ
-                    if (category && !item.item_name.includes(category)) return false;
+                    // カテゴリフィルタ[2]
+                    if (category && (!item.categories || !item.categories.includes(category))) return false;
+                    
+                    // 職業フィルタ[3]
+                    if (job && (!item.required_jobs || !item.required_jobs.includes(job))) return false;
+                    
+                    // セットフィルタ[4]
+                    if (set && !this.detectSetName(item.item_name)?.includes(set)) return false;
                     
                     // 価格フィルタ
                     if (priceRange) {
@@ -551,13 +799,21 @@
                             aVal = this.parsePrice(a.item_price);
                             bVal = this.parsePrice(b.item_price);
                             break;
-                        case 'id':
-                            aVal = parseInt(a.item_id) || 0;
-                            bVal = parseInt(b.item_id) || 0;
+                        case 'category':
+                            aVal = a.categories ? a.categories.join(' ') : '';
+                            bVal = b.categories ? b.categories.join(' ') : '';
                             break;
-                        case 'status':
-                            aVal = a.status || '';
-                            bVal = b.status || '';
+                        case 'job':
+                            aVal = a.required_jobs ? a.required_jobs.join(' ') : '';
+                            bVal = b.required_jobs ? b.required_jobs.join(' ') : '';
+                            break;
+                        case 'level':
+                            aVal = parseInt(a.required_level) || 0;
+                            bVal = parseInt(b.required_level) || 0;
+                            break;
+                        case 'set':
+                            aVal = this.detectSetName(a.item_name) || '';
+                            bVal = this.detectSetName(b.item_name) || '';
                             break;
                         default:
                             return 0;
@@ -584,15 +840,19 @@
                 const avg = prices.length > 0 ? Math.round(prices.reduce((a, b) => a + b, 0) / prices.length) : 0;
                 const max = prices.length > 0 ? Math.max(...prices) : 0;
                 
+                // セット装備数をカウント
+                const setCount = this.filteredData.filter(item => this.detectSetName(item.item_name)).length;
+                
                 document.getElementById('totalItems').textContent = total.toLocaleString();
                 document.getElementById('avgPrice').textContent = this.formatPrice(avg);
                 document.getElementById('maxPrice').textContent = this.formatPrice(max);
+                document.getElementById('setCount').textContent = setCount.toLocaleString();
                 document.getElementById('updateTime').textContent = new Date().toLocaleTimeString('ja-JP');
             }
             
             renderTable() {
                 const start = (this.currentPage - 1) * this.itemsPerPage;
-                const end = this.itemsPerPage === Infinity ? this.filteredData.length : start + this.itemsPerPage;
+                const end = start + this.itemsPerPage;
                 const pageData = this.filteredData.slice(start, end);
                 
                 const tableBody = document.getElementById('tableBody');
@@ -600,26 +860,125 @@
                 
                 pageData.forEach(item => {
                     const price = this.parsePrice(item.item_price);
+                    const setName = this.detectSetName(item.item_name);
+                    const isSelected = this.selectedItems.has(item.item_id);
+                    
+                    const jobBadges = item.required_jobs ? item.required_jobs.map(job => 
+                        `<span class="job-badge job-${job.toLowerCase()}">${this.getJobName(job)}</span>`
+                    ).join('') : '';
+                    
+                    const setBadge = setName ? `<span class="set-badge">${setName}</span>` : '';
+                    
                     const row = tableBody.insertRow();
+                    row.className = isSelected ? 'selected' : '';
                     row.innerHTML = `
                         <td><img src="${item.image_url}" alt="${item.item_name}" class="item-image" loading="lazy" onerror="this.style.display='none'"></td>
-                        <td class="item-name">${item.item_name}</td>
+                        <td class="item-name">${item.item_name}${setBadge}</td>
                         <td class="price ${this.getPriceClass(price)}">${this.formatPrice(price)}</td>
-                        <td>${item.item_id}</td>
-                        <td><span class="status-badge">${item.status}</span></td>
+                        <td>${item.categories ? item.categories.slice(-1)[0] : '-'}</td>
+                        <td>${jobBadges}</td>
+                        <td>${item.required_level || '-'}</td>
+                        <td>${setName || '-'}</td>
+                        <td><button onclick="tracker.toggleItem('${item.item_id}')" class="page-btn">${isSelected ? '削除' : '選択'}</button></td>
                     `;
                 });
                 
                 this.renderPagination();
             }
             
-            renderPagination() {
-                if (this.itemsPerPage === Infinity) {
-                    document.getElementById('topPagination').innerHTML = '';
-                    document.getElementById('bottomPagination').innerHTML = '';
-                    return;
+            getJobName(job) {
+                const jobNames = {
+                    'Warrior': '戦士',
+                    'Magician': '魔法',
+                    'Bowman': '弓使',
+                    'Thief': '盗賊',
+                    'Pirate': '海賊'
+                };
+                return jobNames[job] || job;
+            }
+            
+            toggleItem(itemId) {
+                const item = this.rawData[itemId];
+                if (!item) return;
+                
+                if (this.selectedItems.has(itemId)) {
+                    this.selectedItems.delete(itemId);
+                } else {
+                    this.selectedItems.set(itemId, item);
                 }
                 
+                this.updateSelectedItemsDisplay();
+                this.renderTable(); // 選択状態を更新
+            }
+            
+            updateSelectedItemsDisplay() {
+                const container = document.getElementById('selectedItems');
+                const totalPrice = document.getElementById('totalPrice');
+                const comparisonSection = document.getElementById('comparisonSection');
+                
+                container.innerHTML = '';
+                let total = 0;
+                
+                // カテゴリ別にグループ化して比較用データを準備
+                const categoryGroups = new Map();
+                
+                this.selectedItems.forEach((item, itemId) => {
+                    const price = this.parsePrice(item.item_price);
+                    total += price;
+                    
+                    const itemDiv = document.createElement('div');
+                    itemDiv.className = 'selected-item';
+                    itemDiv.innerHTML = `
+                        <img src="${item.image_url}" alt="${item.item_name}" onerror="this.style.display='none'">
+                        <div class="selected-item-info">
+                            <div class="selected-item-name">${item.item_name}</div>
+                            <div class="selected-item-price">${this.formatPrice(price)}</div>
+                        </div>
+                        <button class="remove-btn" onclick="tracker.toggleItem('${itemId}')">×</button>
+                    `;
+                    container.appendChild(itemDiv);
+                    
+                    // カテゴリ別グループ化[6]
+                    if (item.categories && item.categories.length > 0) {
+                        const category = item.categories[item.categories.length - 1];
+                        if (!categoryGroups.has(category)) {
+                            categoryGroups.set(category, []);
+                        }
+                        categoryGroups.get(category).push({item, price});
+                    }
+                });
+                
+                totalPrice.textContent = `合計: ${this.formatPrice(total)}`;
+                
+                // 同系統装備の比較表示[6]
+                const comparisonList = document.getElementById('comparisonList');
+                comparisonList.innerHTML = '';
+                
+                let hasComparison = false;
+                categoryGroups.forEach((items, category) => {
+                    if (items.length > 1) {
+                        hasComparison = true;
+                        const comparisonDiv = document.createElement('div');
+                        comparisonDiv.className = 'comparison-item';
+                        
+                        const sortedItems = items.sort((a, b) => a.price - b.price);
+                        const cheapest = sortedItems[0];
+                        const mostExpensive = sortedItems[sortedItems.length - 1];
+                        
+                        comparisonDiv.innerHTML = `
+                            <strong>${category}:</strong><br>
+                            最安: ${cheapest.item.item_name} (${this.formatPrice(cheapest.price)})<br>
+                            最高: ${mostExpensive.item.item_name} (${this.formatPrice(mostExpensive.price)})<br>
+                            価格差: ${this.formatPrice(mostExpensive.price - cheapest.price)}
+                        `;
+                        comparisonList.appendChild(comparisonDiv);
+                    }
+                });
+                
+                comparisonSection.style.display = hasComparison ? 'block' : 'none';
+            }
+            
+            renderPagination() {
                 const totalPages = Math.ceil(this.filteredData.length / this.itemsPerPage);
                 const paginationHTML = this.createPaginationHTML(totalPages);
                 
@@ -632,10 +991,8 @@
                 
                 let html = '';
                 
-                // 前へボタン
                 html += `<button class="page-btn" onclick="tracker.goToPage(${this.currentPage - 1})" ${this.currentPage === 1 ? 'disabled' : ''}>‹ 前へ</button>`;
                 
-                // ページ番号
                 const start = Math.max(1, this.currentPage - 2);
                 const end = Math.min(totalPages, this.currentPage + 2);
                 
@@ -653,7 +1010,6 @@
                     html += `<button class="page-btn" onclick="tracker.goToPage(${totalPages})">${totalPages}</button>`;
                 }
                 
-                // 次へボタン
                 html += `<button class="page-btn" onclick="tracker.goToPage(${this.currentPage + 1})" ${this.currentPage === totalPages ? 'disabled' : ''}>次へ ›</button>`;
                 
                 return html;
@@ -685,12 +1041,18 @@
             }
         }
         
-        // グローバルスコープで使用するための関数[3]
+        // グローバルスコープで使用するための関数[7]
         function sortTable(field) {
             tracker.sortTable(field);
         }
         
-        // アプリケーション初期化[2]
+        function clearAllItems() {
+            tracker.selectedItems.clear();
+            tracker.updateSelectedItemsDisplay();
+            tracker.renderTable();
+        }
+        
+        // アプリケーション初期化
         let tracker;
         document.addEventListener('DOMContentLoaded', function() {
             tracker = new MapleStoryPriceTracker();
