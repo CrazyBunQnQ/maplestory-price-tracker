@@ -664,21 +664,19 @@
             }
             
             generateFilters() {
-                // カテゴリフィルター生成（JSONの categories 配列を使用）
                 const categories = new Set();
                 const setNames = new Set();
                 
                 Object.values(this.rawData).forEach(item => {
-                    // categories配列から最も具体的なカテゴリを取得[1]
                     if (item.categories && item.categories.length > 0) {
-                        // 最後の要素が最も具体的なカテゴリ
                         const specificCategory = item.categories[item.categories.length - 1];
                         if (specificCategory && specificCategory.trim() !== '') {
-                            categories.add(specificCategory);
+                            // サブウエポン統一処理
+                            const displayCategory = this.getCategoryDisplayName(specificCategory);
+                            categories.add(displayCategory);
                         }
                     }
                     
-                    // セット名の検出
                     const setName = this.detectSetName(item.item_name);
                     if (setName) {
                         setNames.add(setName);
@@ -687,21 +685,20 @@
                 
                 // カテゴリオプション追加
                 const categoryFilter = document.getElementById('categoryFilter');
-                // 既存のオプションをクリア（最初のオプション以外）
                 while (categoryFilter.children.length > 1) {
                     categoryFilter.removeChild(categoryFilter.lastChild);
                 }
                 
+                // 英語表記のままソートして追加
                 Array.from(categories).sort().forEach(category => {
                     const option = document.createElement('option');
                     option.value = category;
-                    option.textContent = this.getCategoryDisplayName(category);
+                    option.textContent = category; // 英語表記のまま表示
                     categoryFilter.appendChild(option);
                 });
                 
                 // セットオプション追加
                 const setFilter = document.getElementById('setFilter');
-                // 既存のオプションをクリア（最初のオプション以外）
                 while (setFilter.children.length > 1) {
                     setFilter.removeChild(setFilter.lastChild);
                 }
@@ -709,60 +706,35 @@
                 Array.from(setNames).sort().forEach(setName => {
                     const option = document.createElement('option');
                     option.value = setName;
-                    option.textContent = setName + 'セット';
+                    option.textContent = setName + ' Set'; // 英語表記に統一
                     setFilter.appendChild(option);
                 });
             }
             
             getCategoryDisplayName(category) {
-                // カテゴリの日本語表示名を返す
-                const categoryNames = {
-                    'Staff': '杖',
-                    'Wand': 'ワンド',
-                    'Magic Book': '魔導書',
-                    'Bow': '弓',
-                    'Crossbow': 'クロスボウ',
-                    'One-handed Sword': '片手剣',
-                    'Two-handed Sword': '両手剣',
-                    'One-handed Axe': '片手斧',
-                    'Two-handed Axe': '両手斧',
-                    'One-handed Blunt Weapon': '片手鈍器',
-                    'Two-handed Blunt': '両手鈍器',
-                    'Polearm': 'ポールアーム',
-                    'Spear': '槍',
-                    'Dagger': '短剣',
-                    'Claw': '爪',
-                    'Gun': '銃',
-                    'Knuckle': 'ナックル',
-                    'Hat': '帽子',
-                    'Top': '上衣',
-                    'Bottom': '下衣',
-                    'Outfit': '全身服',
-                    'Shoes': '靴',
-                    'Gloves': '手袋',
-                    'Cape': 'マント',
-                    'Ring': '指輪',
-                    'Earrings': 'イヤリング',
-                    'Pendant': 'ペンダント',
-                    'Belt': 'ベルト',
-                    'Badge': 'バッジ',
-                    'Emblem': 'エンブレム',
-                    'Face Accessory': '顔アクセサリ',
-                    'Eye Accessory': '目アクセサリ',
-                    'Shoulder Accessory': '肩装飾',
-                    'Pocket Item': 'ポケットアイテム',
-                    'Rosary': 'ロザリオ',
-                    'Medal': 'メダル',
-                    'Iron Chain': '鉄鎖',
-                    'Arrow Fletching': '矢羽根',
-                    'Bow Thimble': '弓指ぬき',
-                    'Charm': 'チャーム',
-                    'Dagger Scabbard': '短剣鞘',
-                    'Far Sight': '照準器',
-                    'Wrist Band': 'リストバンド'
+                // サブウエポン系をすべて「Secondary Weapon」に統一
+                const categoryMappings = {
+                    'Magic Book': 'Secondary Weapon',
+                    'Rosary': 'Secondary Weapon',
+                    'Medal': 'Secondary Weapon',
+                    'Iron Chain': 'Secondary Weapon',
+                    'Arrow Fletching': 'Secondary Weapon',
+                    'Bow Thimble': 'Secondary Weapon',
+                    'Charm': 'Secondary Weapon',
+                    'Dagger Scabbard': 'Secondary Weapon',
+                    'Far Sight': 'Secondary Weapon',
+                    'Wrist Band': 'Secondary Weapon'
                 };
-                return categoryNames[category] || category;
+                
+                // サブウエポン系の場合は統一カテゴリを返す
+                if (categoryMappings[category]) {
+                    return categoryMappings[category];
+                }
+                
+                // その他のカテゴリは英語のまま返す（日本語変換を削除）
+                return category;
             }
+
             
             detectSetName(itemName) {
                 // セット名の検出ロジック
@@ -821,10 +793,26 @@
                     // 検索フィルタ
                     if (searchTerm && !item.item_name.toLowerCase().includes(searchTerm)) return false;
                     
-                    // カテゴリフィルタ（categories配列の最後の要素で判定）[1]
+                    // カテゴリフィルタ（サブウエポン統一対応）
                     if (category) {
-                        if (!item.categories || !item.categories.includes(category)) {
-                            return false;
+                        if (category === 'Secondary Weapon') {
+                            // Secondary Weaponが選択された場合、統一対象のカテゴリをすべて含める
+                            const subWeaponCategories = [
+                                'Magic Book', 'Rosary', 'Medal', 'Iron Chain', 
+                                'Arrow Fletching', 'Bow Thimble', 'Charm', 
+                                'Dagger Scabbard', 'Far Sight', 'Wrist Band'
+                            ];
+                            
+                            if (!item.categories || !item.categories.some(cat => 
+                                subWeaponCategories.includes(cat) || cat === 'Secondary Weapon'
+                            )) {
+                                return false;
+                            }
+                        } else {
+                            // 通常のカテゴリフィルタ
+                            if (!item.categories || !item.categories.includes(category)) {
+                                return false;
+                            }
                         }
                     }
                     
@@ -950,10 +938,10 @@
                     
                     const setBadge = setName ? `<span class="set-badge">${setName}</span>` : '';
                     
-                    // カテゴリ表示（最も具体的なカテゴリを使用）[1]
+                    // カテゴリ表示（統一されたカテゴリを使用）
                     const categoryDisplay = item.categories && item.categories.length > 0 ? 
                         this.getCategoryDisplayName(item.categories[item.categories.length - 1]) : '-';
-                    
+
                     const row = tableBody.insertRow();
                     row.className = isSelected ? 'selected' : '';
                     row.innerHTML = `
