@@ -575,7 +575,7 @@
     </div>
 
     <script>
-        // パフォーマンス最適化のためのクラス[5][6]
+        // パフォーマンス最適化のためのクラス
         class MapleStoryPriceTracker {
             constructor() {
                 this.rawData = {};
@@ -606,7 +606,7 @@
             }
             
             async loadData() {
-                // キャッシュ確認[5]
+                // キャッシュ確認
                 const cached = localStorage.getItem('equipmentDataCache');
                 const cacheTime = localStorage.getItem('equipmentDataCacheTime');
                 
@@ -622,7 +622,7 @@
                     
                     this.rawData = await response.json();
                     
-                    // キャッシュに保存[5]
+                    // キャッシュに保存
                     localStorage.setItem('equipmentDataCache', JSON.stringify(this.rawData));
                     localStorage.setItem('equipmentDataCacheTime', Date.now().toString());
                 } catch (error) {
@@ -633,10 +633,10 @@
             }
             
             getFallbackData() {
-                // 新しいJSONデータ構造に対応[1][2]
+                // 新しいJSONデータ構造に対応したフォールバックデータ
                 return {
                     "1382285": {"item_name": "Unchained Staff", "image_url": "https://api-static.msu.io/itemimages/icon/1382285.png", "item_id": "1382285", "item_price": "2,795,000", "status": "価格更新済み", "categories": ["Weapon", "One-handed Weapon", "Staff"], "required_level": "120", "required_jobs": ["Magician"]},
-                    // ... 他のデータ
+                    "1352232": {"item_name": "Rusty Book", "image_url": "https://api-static.msu.io/itemimages/icon/1352232.png", "item_id": "1352232", "item_price": "1,480,000", "status": "価格更新済み", "categories": ["Weapon", "Secondary Weapon", "Magic Book"], "required_level": "100", "required_jobs": ["Magician"]}
                 };
             }
             
@@ -663,16 +663,21 @@
             }
             
             generateFilters() {
-                // カテゴリフィルター生成[2]
+                // カテゴリフィルター生成（JSONの categories 配列を使用）
                 const categories = new Set();
                 const setNames = new Set();
                 
                 Object.values(this.rawData).forEach(item => {
+                    // categories配列から最も具体的なカテゴリを取得[2]
                     if (item.categories && item.categories.length > 0) {
-                        item.categories.forEach(cat => categories.add(cat));
+                        // 最後の要素が最も具体的なカテゴリ
+                        const specificCategory = item.categories[item.categories.length - 1];
+                        if (specificCategory && specificCategory.trim() !== '') {
+                            categories.add(specificCategory);
+                        }
                     }
                     
-                    // セット名の検出[4]
+                    // セット名の検出
                     const setName = this.detectSetName(item.item_name);
                     if (setName) {
                         setNames.add(setName);
@@ -681,15 +686,25 @@
                 
                 // カテゴリオプション追加
                 const categoryFilter = document.getElementById('categoryFilter');
+                // 既存のオプションをクリア（最初のオプション以外）
+                while (categoryFilter.children.length > 1) {
+                    categoryFilter.removeChild(categoryFilter.lastChild);
+                }
+                
                 Array.from(categories).sort().forEach(category => {
                     const option = document.createElement('option');
                     option.value = category;
-                    option.textContent = category;
+                    option.textContent = this.getCategoryDisplayName(category);
                     categoryFilter.appendChild(option);
                 });
                 
                 // セットオプション追加
                 const setFilter = document.getElementById('setFilter');
+                // 既存のオプションをクリア（最初のオプション以外）
+                while (setFilter.children.length > 1) {
+                    setFilter.removeChild(setFilter.lastChild);
+                }
+                
                 Array.from(setNames).sort().forEach(setName => {
                     const option = document.createElement('option');
                     option.value = setName;
@@ -698,8 +713,49 @@
                 });
             }
             
+            getCategoryDisplayName(category) {
+                // カテゴリの日本語表示名を返す
+                const categoryNames = {
+                    'Staff': '杖',
+                    'Wand': 'ワンド',
+                    'Magic Book': '魔導書',
+                    'Bow': '弓',
+                    'Crossbow': 'クロスボウ',
+                    'One-handed Sword': '片手剣',
+                    'Two-handed Sword': '両手剣',
+                    'One-handed Axe': '片手斧',
+                    'Two-handed Axe': '両手斧',
+                    'One-handed Blunt Weapon': '片手鈍器',
+                    'Two-handed Blunt': '両手鈍器',
+                    'Polearm': 'ポールアーム',
+                    'Spear': '槍',
+                    'Dagger': '短剣',
+                    'Claw': '爪',
+                    'Gun': '銃',
+                    'Knuckle': 'ナックル',
+                    'Hat': '帽子',
+                    'Top': '上衣',
+                    'Bottom': '下衣',
+                    'Outfit': '全身服',
+                    'Shoes': '靴',
+                    'Gloves': '手袋',
+                    'Cape': 'マント',
+                    'Ring': '指輪',
+                    'Earrings': 'イヤリング',
+                    'Pendant': 'ペンダント',
+                    'Belt': 'ベルト',
+                    'Badge': 'バッジ',
+                    'Emblem': 'エンブレム',
+                    'Face Accessory': '顔アクセサリ',
+                    'Eye Accessory': '目アクセサリ',
+                    'Shoulder Accessory': '肩装飾',
+                    'Pocket Item': 'ポケットアイテム'
+                };
+                return categoryNames[category] || category;
+            }
+            
             detectSetName(itemName) {
-                // セット名の検出ロジック[4]
+                // セット名の検出ロジック
                 const setPatterns = [
                     /^(Unchained)\s/i,
                     /^(Royal Von Leon)\s/i,
@@ -733,7 +789,7 @@
             
             formatPrice(price) {
                 if (price === 0) return '未取得';
-                return price.toLocaleString() + ' NESO'; // 単位をNESOに変更[1]
+                return price.toLocaleString() + ' NESO';
             }
             
             getPriceClass(price) {
@@ -755,14 +811,27 @@
                     // 検索フィルタ
                     if (searchTerm && !item.item_name.toLowerCase().includes(searchTerm)) return false;
                     
-                    // カテゴリフィルタ[2]
-                    if (category && (!item.categories || !item.categories.includes(category))) return false;
+                    // カテゴリフィルタ（categories配列の最後の要素で判定）[2]
+                    if (category) {
+                        if (!item.categories || !item.categories.includes(category)) {
+                            return false;
+                        }
+                    }
                     
-                    // 職業フィルタ[3]
-                    if (job && (!item.required_jobs || !item.required_jobs.includes(job))) return false;
+                    // 職業フィルタ（required_jobs配列で判定）[2]
+                    if (job) {
+                        if (!item.required_jobs || !Array.isArray(item.required_jobs) || !item.required_jobs.includes(job)) {
+                            return false;
+                        }
+                    }
                     
-                    // セットフィルタ[4]
-                    if (set && !this.detectSetName(item.item_name)?.includes(set)) return false;
+                    // セットフィルタ
+                    if (set) {
+                        const itemSetName = this.detectSetName(item.item_name);
+                        if (!itemSetName || !itemSetName.includes(set)) {
+                            return false;
+                        }
+                    }
                     
                     // 価格フィルタ
                     if (priceRange) {
@@ -800,8 +869,8 @@
                             bVal = this.parsePrice(b.item_price);
                             break;
                         case 'category':
-                            aVal = a.categories ? a.categories.join(' ') : '';
-                            bVal = b.categories ? b.categories.join(' ') : '';
+                            aVal = a.categories && a.categories.length > 0 ? a.categories[a.categories.length - 1] : '';
+                            bVal = b.categories && b.categories.length > 0 ? b.categories[b.categories.length - 1] : '';
                             break;
                         case 'job':
                             aVal = a.required_jobs ? a.required_jobs.join(' ') : '';
@@ -863,11 +932,17 @@
                     const setName = this.detectSetName(item.item_name);
                     const isSelected = this.selectedItems.has(item.item_id);
                     
-                    const jobBadges = item.required_jobs ? item.required_jobs.map(job => 
-                        `<span class="job-badge job-${job.toLowerCase()}">${this.getJobName(job)}</span>`
-                    ).join('') : '';
+                    // 職業バッジの生成（required_jobs配列を使用）[2]
+                    const jobBadges = item.required_jobs && Array.isArray(item.required_jobs) ? 
+                        item.required_jobs.map(job => 
+                            `<span class="job-badge job-${job.toLowerCase()}">${this.getJobName(job)}</span>`
+                        ).join('') : '';
                     
                     const setBadge = setName ? `<span class="set-badge">${setName}</span>` : '';
+                    
+                    // カテゴリ表示（最も具体的なカテゴリを使用）[2]
+                    const categoryDisplay = item.categories && item.categories.length > 0 ? 
+                        this.getCategoryDisplayName(item.categories[item.categories.length - 1]) : '-';
                     
                     const row = tableBody.insertRow();
                     row.className = isSelected ? 'selected' : '';
@@ -875,7 +950,7 @@
                         <td><img src="${item.image_url}" alt="${item.item_name}" class="item-image" loading="lazy" onerror="this.style.display='none'"></td>
                         <td class="item-name">${item.item_name}${setBadge}</td>
                         <td class="price ${this.getPriceClass(price)}">${this.formatPrice(price)}</td>
-                        <td>${item.categories ? item.categories.slice(-1)[0] : '-'}</td>
+                        <td>${categoryDisplay}</td>
                         <td>${jobBadges}</td>
                         <td>${item.required_level || '-'}</td>
                         <td>${setName || '-'}</td>
@@ -938,7 +1013,7 @@
                     `;
                     container.appendChild(itemDiv);
                     
-                    // カテゴリ別グループ化[6]
+                    // カテゴリ別グループ化
                     if (item.categories && item.categories.length > 0) {
                         const category = item.categories[item.categories.length - 1];
                         if (!categoryGroups.has(category)) {
@@ -950,7 +1025,7 @@
                 
                 totalPrice.textContent = `合計: ${this.formatPrice(total)}`;
                 
-                // 同系統装備の比較表示[6]
+                // 同系統装備の比較表示
                 const comparisonList = document.getElementById('comparisonList');
                 comparisonList.innerHTML = '';
                 
@@ -966,7 +1041,7 @@
                         const mostExpensive = sortedItems[sortedItems.length - 1];
                         
                         comparisonDiv.innerHTML = `
-                            <strong>${category}:</strong><br>
+                            <strong>${this.getCategoryDisplayName(category)}:</strong><br>
                             最安: ${cheapest.item.item_name} (${this.formatPrice(cheapest.price)})<br>
                             最高: ${mostExpensive.item.item_name} (${this.formatPrice(mostExpensive.price)})<br>
                             価格差: ${this.formatPrice(mostExpensive.price - cheapest.price)}
@@ -1041,7 +1116,7 @@
             }
         }
         
-        // グローバルスコープで使用するための関数[7]
+        // グローバルスコープで使用するための関数
         function sortTable(field) {
             tracker.sortTable(field);
         }
