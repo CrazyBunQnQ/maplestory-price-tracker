@@ -1052,4 +1052,450 @@
                             
                             return true;
                         } catch (itemError) {
-                            this.log(`アイテムフィルターエラー (${item?.item_id}): ${itemError
+                            this.log(`アイテムフィルターエラー (${item?.item_id}): ${itemError.message}`, 'warn');
+                            return false;
+                        }
+                    });
+                    
+                    this.currentPage = 1;
+                    this.updateStats();
+                    this.renderTable();
+                    this.log(`フィルター適用完了: ${this.filteredData.length}件表示`);
+                } catch (error) {
+                    this.log(`フィルター適用エラー: ${error.message}`, 'error');
+                }
+            }
+            
+            sortTable(field) {
+                try {
+                    if (this.sortField === field) {
+                        this.sortDirection = this.sortDirection === 'asc' ? 'desc' : 'asc';
+                    } else {
+                        this.sortField = field;
+                        this.sortDirection = 'asc';
+                    }
+                    
+                    this.filteredData.sort((a, b) => {
+                        try {
+                            let aVal, bVal;
+                            
+                            switch (field) {
+                                case 'name':
+                                    aVal = a.item_name || '';
+                                    bVal = b.item_name || '';
+                                    break;
+                                case 'price':
+                                    aVal = this.parsePrice(a.item_price);
+                                    bVal = this.parsePrice(b.item_price);
+                                    break;
+                                case 'category':
+                                    aVal = a.categories && a.categories.length > 0 ? a.categories[a.categories.length - 1] : '';
+                                    bVal = b.categories && b.categories.length > 0 ? b.categories[b.categories.length - 1] : '';
+                                    break;
+                                case 'job':
+                                    aVal = a.required_jobs ? a.required_jobs.join(' ') : '';
+                                    bVal = b.required_jobs ? b.required_jobs.join(' ') : '';
+                                    break;
+                                case 'level':
+                                    aVal = parseInt(a.required_level) || 0;
+                                    bVal = parseInt(b.required_level) || 0;
+                                    break;
+                                case 'set':
+                                    aVal = this.detectSetName(a.item_name) || '';
+                                    bVal = this.detectSetName(b.item_name) || '';
+                                    break;
+                                default:
+                                    return 0;
+                            }
+                            
+                            if (typeof aVal === 'string') {
+                                return this.sortDirection === 'asc' 
+                                    ? aVal.localeCompare(bVal, 'ja')
+                                    : bVal.localeCompare(aVal, 'ja');
+                            } else {
+                                return this.sortDirection === 'asc' ? aVal - bVal : bVal - aVal;
+                            }
+                        } catch (sortError) {
+                            this.log(`ソートエラー: ${sortError.message}`, 'warn');
+                            return 0;
+                        }
+                    });
+                    
+                    this.renderTable();
+                    this.log(`ソート完了: ${field} (${this.sortDirection})`);
+                } catch (error) {
+                    this.log(`ソートエラー: ${error.message}`, 'error');
+                }
+            }
+            
+            updateStats() {
+                try {
+                    const prices = this.filteredData
+                        .map(item => this.parsePrice(item.item_price))
+                        .filter(p => p > 0);
+                    
+                    const total = this.filteredData.length;
+                    const avg = prices.length > 0 ? Math.round(prices.reduce((a, b) => a + b, 0) / prices.length) : 0;
+                    const max = prices.length > 0 ? Math.max(...prices) : 0;
+                    const setCount = this.filteredData.filter(item => this.detectSetName(item.item_name)).length;
+                    
+                    document.getElementById('totalItems').textContent = total.toLocaleString();
+                    document.getElementById('avgPrice').textContent = this.formatPrice(avg);
+                    document.getElementById('maxPrice').textContent = this.formatPrice(max);
+                    document.getElementById('setCount').textContent = setCount.toLocaleString();
+                    
+                    this.displayLastUpdateTime();
+                    this.log(`統計更新完了: 総数${total}, 平均${avg}, 最高${max}, セット${setCount}`);
+                } catch (error) {
+                    this.log(`統計更新エラー: ${error.message}`, 'error');
+                }
+            }
+            
+            displayLastUpdateTime() {
+                try {
+                    let latestUpdateTime = null;
+                    
+                    Object.values(this.rawData).forEach(item => {
+                        try {
+                            if (item && item.last_updated) {
+                                const updateTime = new Date(item.last_updated);
+                                if (!isNaN(updateTime.getTime()) && (!latestUpdateTime || updateTime > latestUpdateTime)) {
+                                    latestUpdateTime = updateTime;
+                                }
+                            }
+                        } catch (timeError) {
+                            // 個別のアイテム時刻エラーは無視
+                        }
+                    });
+                    
+                    const updateElement = document.getElementById('updateTime');
+                    if (updateElement) {
+                        if (latestUpdateTime) {
+                            const timeString = latestUpdateTime.toLocaleTimeString('ja-JP', {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                                second: '2-digit',
+                                timeZone: 'Asia/Tokyo'
+                            });
+                            updateElement.textContent = timeString;
+                        } else {
+                            updateElement.textContent = new Date().toLocaleTimeString('ja-JP');
+                        }
+                    }
+                } catch (error) {
+                    this.log(`最終更新時刻表示エラー: ${error.message}`, 'warn');
+                    try {
+                        document.getElementById('updateTime').textContent = new Date().toLocaleTimeString('ja-JP');
+                    } catch (fallbackError) {
+                        // フォールバックも失敗した場合は無視
+                    }
+                }
+            }
+            
+            renderTable() {
+                try {
+                    const start = (this.currentPage - 1) * this.itemsPerPage;
+                    const end = start + this.itemsPerPage;
+                    const pageData = this.filteredData.slice(start, end);
+                    
+                    const tableBody = document.getElementById('tableBody');
+                    if (!tableBody) {
+                        this.log('テーブルボディ要素が見つかりません', 'error');
+                        return;
+                    }
+                    
+                    tableBody.innerHTML = '';
+                    
+                    pageData.forEach(item => {
+                        try {
+                            if (!item || !item.item_name) return;
+                            
+                            const price = this.parsePrice(item.item_price);
+                            const setName = this.detectSetName(item.item_name);
+                            const isSelectedA = this.selectedItemsA.has(item.item_id);
+                            const isSelectedB = this.selectedItemsB.has(item.item_id);
+                            
+                            const jobBadges = item.required_jobs && Array.isArray(item.required_jobs) ? 
+                                item.required_jobs.map(job => 
+                                    `<span class="job-badge job-${job.toLowerCase()}">${job}</span>`
+                                ).join('') : '';
+                            
+                            const setBadge = setName ? `<span class="set-badge">${setName}</span>` : '';
+                            const categoryDisplay = item.categories && Array.isArray(item.categories) && item.categories.length > 0 ? 
+                                this.getCategoryDisplayName(item.categories[item.categories.length - 1]) : '-';
+                            
+                            let rowClass = '';
+                            if (isSelectedA) rowClass = 'selected-a';
+                            if (isSelectedB) rowClass = 'selected-b';
+                            
+                            const row = tableBody.insertRow();
+                            row.className = rowClass;
+                            row.innerHTML = `
+                                <td><img src="${item.image_url || ''}" alt="${item.item_name}" class="item-image" loading="lazy" onerror="this.style.display='none'"></td>
+                                <td class="item-name">${item.item_name}${setBadge}</td>
+                                <td class="price ${this.getPriceClass(price)}">${this.formatPrice(price)}</td>
+                                <td>${categoryDisplay}</td>
+                                <td>${jobBadges}</td>
+                                <td>${item.required_level || '-'}</td>
+                                <td>${setName || '-'}</td>
+                                <td>
+                                    <div class="select-buttons">
+                                        <button class="select-btn a ${isSelectedA ? 'selected' : ''}" onclick="tracker.toggleItem('${item.item_id}', 'a')">A</button>
+                                        <button class="select-btn b ${isSelectedB ? 'selected' : ''}" onclick="tracker.toggleItem('${item.item_id}', 'b')">B</button>
+                                    </div>
+                                </td>
+                            `;
+                        } catch (rowError) {
+                            this.log(`行生成エラー (${item?.item_id}): ${rowError.message}`, 'warn');
+                        }
+                    });
+                    
+                    this.log(`テーブル描画完了: ${pageData.length}件表示`);
+                } catch (error) {
+                    this.log(`テーブル描画エラー: ${error.message}`, 'error');
+                }
+            }
+            
+            toggleItem(itemId, set) {
+                try {
+                    const item = this.rawData[itemId];
+                    if (!item) {
+                        this.log(`アイテムが見つかりません: ${itemId}`, 'warn');
+                        return;
+                    }
+                    
+                    const selectedMap = set === 'a' ? this.selectedItemsA : this.selectedItemsB;
+                    const otherMap = set === 'a' ? this.selectedItemsB : this.selectedItemsA;
+                    
+                    otherMap.delete(itemId);
+                    
+                    if (selectedMap.has(itemId)) {
+                        selectedMap.delete(itemId);
+                        this.log(`セット${set.toUpperCase()}から削除: ${item.item_name}`);
+                    } else {
+                        selectedMap.set(itemId, item);
+                        this.log(`セット${set.toUpperCase()}に追加: ${item.item_name}`);
+                    }
+                    
+                    this.updateSelectedItemsDisplay();
+                    this.renderTable();
+                } catch (error) {
+                    this.log(`アイテム切り替えエラー: ${error.message}`, 'error');
+                }
+            }
+            
+            updateSelectedItemsDisplay() {
+                try {
+                    this.updateSetDisplay('a', this.selectedItemsA);
+                    this.updateSetDisplay('b', this.selectedItemsB);
+                    this.updateTotalPrices();
+                } catch (error) {
+                    this.log(`選択アイテム表示更新エラー: ${error.message}`, 'error');
+                }
+            }
+            
+            updateSetDisplay(set, selectedMap) {
+                try {
+                    const container = document.getElementById(`selection${set.toUpperCase()}`);
+                    if (!container) {
+                        this.log(`選択コンテナが見つかりません: selection${set.toUpperCase()}`, 'warn');
+                        return;
+                    }
+                    
+                    container.innerHTML = '';
+                    
+                    selectedMap.forEach((item, itemId) => {
+                        try {
+                            const price = this.parsePrice(item.item_price);
+                            
+                            const itemDiv = document.createElement('div');
+                            itemDiv.className = `selected-item ${set}`;
+                            itemDiv.innerHTML = `
+                                <img src="${item.image_url || ''}" alt="${item.item_name}" onerror="this.style.display='none'">
+                                <div class="selected-item-info">
+                                    <div class="selected-item-name">${item.item_name}</div>
+                                    <div class="selected-item-price">${this.formatPriceShort(price)} NESO</div>
+                                </div>
+                                <button class="remove-btn" onclick="tracker.toggleItem('${itemId}', '${set}')">×</button>
+                            `;
+                            container.appendChild(itemDiv);
+                        } catch (itemError) {
+                            this.log(`選択アイテム表示エラー (${itemId}): ${itemError.message}`, 'warn');
+                        }
+                    });
+                } catch (error) {
+                    this.log(`セット表示更新エラー (${set}): ${error.message}`, 'error');
+                }
+            }
+            
+            updateTotalPrices() {
+                try {
+                    const totalA = Array.from(this.selectedItemsA.values())
+                        .reduce((sum, item) => sum + this.parsePrice(item.item_price), 0);
+                    const totalB = Array.from(this.selectedItemsB.values())
+                        .reduce((sum, item) => sum + this.parsePrice(item.item_price), 0);
+                    
+                    const elementA = document.getElementById('totalPriceA');
+                    const elementB = document.getElementById('totalPriceB');
+                    
+                    if (elementA) elementA.textContent = `セットA: ${this.formatPriceShort(totalA)} NESO`;
+                    if (elementB) elementB.textContent = `セットB: ${this.formatPriceShort(totalB)} NESO`;
+                } catch (error) {
+                    this.log(`合計価格更新エラー: ${error.message}`, 'error');
+                }
+            }
+            
+            async refreshData() {
+                try {
+                    this.log('データ更新開始');
+                    localStorage.removeItem('equipmentDataCache');
+                    localStorage.removeItem('equipmentDataCacheTime');
+                    await this.init();
+                    this.log('データ更新完了');
+                } catch (error) {
+                    this.log(`データ更新エラー: ${error.message}`, 'error');
+                }
+            }
+            
+            showLoading(show) {
+                try {
+                    const element = document.getElementById('loadingIndicator');
+                    if (element) {
+                        element.style.display = show ? 'block' : 'none';
+                    }
+                } catch (error) {
+                    this.log(`ローディング表示エラー: ${error.message}`, 'warn');
+                }
+            }
+            
+            showError(message) {
+                try {
+                    const errorDiv = document.getElementById('errorMessage');
+                    if (errorDiv) {
+                        errorDiv.textContent = message;
+                        errorDiv.style.display = 'block';
+                    }
+                    this.showLoading(false);
+                    this.log(`エラー表示: ${message}`, 'error');
+                } catch (error) {
+                    console.error('Error display failed:', error);
+                }
+            }
+        }
+        
+        // グローバル関数
+        function sortTable(field) {
+            if (window.tracker) {
+                tracker.sortTable(field);
+            }
+        }
+        
+        function switchTab(tab) {
+            if (window.tracker) {
+                tracker.currentTab = tab;
+                
+                document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+                document.querySelector(`.tab-btn.${tab}`).classList.add('active');
+                
+                document.querySelectorAll('.selection-content').forEach(content => content.classList.remove('active'));
+                document.getElementById(`selection${tab.toUpperCase()}`).classList.add('active');
+            }
+        }
+        
+        function clearSet(set) {
+            if (window.tracker) {
+                if (set === 'a') {
+                    tracker.selectedItemsA.clear();
+                } else {
+                    tracker.selectedItemsB.clear();
+                }
+                tracker.updateSelectedItemsDisplay();
+                tracker.renderTable();
+            }
+        }
+        
+        function compareAllSets() {
+            if (!window.tracker) return;
+            
+            const comparisonSection = document.getElementById('comparisonSection');
+            const comparisonList = document.getElementById('comparisonList');
+            
+            if (tracker.selectedItemsA.size === 0 && tracker.selectedItemsB.size === 0) {
+                comparisonSection.style.display = 'none';
+                return;
+            }
+            
+            try {
+                const categoriesA = new Map();
+                const categoriesB = new Map();
+                
+                tracker.selectedItemsA.forEach(item => {
+                    if (item.categories && item.categories.length > 0) {
+                        const category = item.categories[item.categories.length - 1];
+                        categoriesA.set(category, {item, price: tracker.parsePrice(item.item_price)});
+                    }
+                });
+                
+                tracker.selectedItemsB.forEach(item => {
+                    if (item.categories && item.categories.length > 0) {
+                        const category = item.categories[item.categories.length - 1];
+                        categoriesB.set(category, {item, price: tracker.parsePrice(item.item_price)});
+                    }
+                });
+                
+                comparisonList.innerHTML = '';
+                
+                const allCategories = new Set([...categoriesA.keys(), ...categoriesB.keys()]);
+                
+                allCategories.forEach(category => {
+                    const itemA = categoriesA.get(category);
+                    const itemB = categoriesB.get(category);
+                    
+                    const comparisonDiv = document.createElement('div');
+                    comparisonDiv.className = 'comparison-item';
+                    
+                    let html = `<strong>${tracker.getCategoryDisplayName(category)}:</strong><br>`;
+                    
+                    if (itemA && itemB) {
+                        const diff = itemB.price - itemA.price;
+                        const diffText = diff >= 0 ? `+${tracker.formatPriceShort(Math.abs(diff))}` : `-${tracker.formatPriceShort(Math.abs(diff))}`;
+                        
+                        const nameA = itemA.item.item_name.length > 13 ? 
+                            itemA.item.item_name.substring(0, 13) + '...' : itemA.item.item_name;
+                        const nameB = itemB.item.item_name.length > 13 ? 
+                            itemB.item.item_name.substring(0, 13) + '...' : itemB.item.item_name;
+                        
+                        html += `A: ${nameA} (${tracker.formatPriceShort(itemA.price)})<br>`;
+                        html += `B: ${nameB} (${tracker.formatPriceShort(itemB.price)})<br>`;
+                        html += `差額: ${diffText} NESO`;
+                    } else if (itemA) {
+                        const nameA = itemA.item.item_name.length > 16 ? 
+                            itemA.item.item_name.substring(0, 16) + '...' : itemA.item.item_name;
+                        html += `A: ${nameA} (${tracker.formatPriceShort(itemA.price)})<br>`;
+                        html += `B: 未選択`;
+                    } else if (itemB) {
+                        const nameB = itemB.item.item_name.length > 16 ? 
+                            itemB.item.item_name.substring(0, 16) + '...' : itemB.item.item_name;
+                        html += `A: 未選択<br>`;
+                        html += `B: ${nameB} (${tracker.formatPriceShort(itemB.price)})`;
+                    }
+                    
+                    comparisonDiv.innerHTML = html;
+                    comparisonList.appendChild(comparisonDiv);
+                });
+                
+                comparisonSection.style.display = 'block';
+            } catch (error) {
+                tracker.log(`比較エラー: ${error.message}`, 'error');
+            }
+        }
+        
+        // アプリケーション初期化
+        let tracker;
+        document.addEventListener('DOMContentLoaded', function() {
+            tracker = new MapleStoryPriceTracker();
+            window.tracker = tracker; // グローバルアクセス用
+        });
+    </script>
+</body>
+</html>
