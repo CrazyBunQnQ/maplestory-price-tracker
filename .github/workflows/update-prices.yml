@@ -2,13 +2,12 @@ name: MapleStory Equipment Price Auto Update
 
 on:
   schedule:
-    # 毎30分実行 (UTC時刻)
     - cron: '*/30 * * * *'
   workflow_dispatch:
     inputs:
       target_items:
-        description: 'Number of items to update (default: 50)'
-        default: '50'
+        description: 'Number of items to update (default: 10)'
+        default: '10'
         type: string
 
 env:
@@ -31,20 +30,69 @@ jobs:
         python-version: '3.11'
         cache: 'pip'
     
-    - name: Setup Chrome and ChromeDriver
+    # Chrome for Testing API対応の新しいChromeDriver設定
+    - name: Setup Chrome and ChromeDriver (Chrome for Testing)
       run: |
+        # Google Chrome安定版をインストール
+        sudo apt-get update
+        sudo apt-get install -y wget gnupg
+        wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
+        sudo sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list'
         sudo apt-get update
         sudo apt-get install -y google-chrome-stable
         
-        CHROME_VERSION=$(google-chrome --version | cut -d ' ' -f3 | cut -d '.' -f1-3)
-        DRIVER_VERSION=$(curl -s "https://chromedriver.storage.googleapis.com/LATEST_RELEASE_${CHROME_VERSION}")
+        # Chromeバージョンを取得
+        CHROME_VERSION=$(google-chrome --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+')
+        echo "Chrome version: $CHROME_VERSION"
         
-        wget -O /tmp/chromedriver.zip "https://chromedriver.storage.googleapis.com/${DRIVER_VERSION}/chromedriver_linux64.zip"
-        sudo unzip /tmp/chromedriver.zip -d /usr/local/bin/
+        # Chrome for Testing APIから対応するChromeDriverを取得
+        # メジャーバージョンを抽出 (例: 136.0.7103.92 → 136)
+        CHROME_MAJOR_VERSION=$(echo $CHROME_VERSION | cut -d '.' -f 1)
+        
+        # Chrome for Testing APIで利用可能なバージョンを取得
+        CHROMEDRIVER_JSON_URL="https://googlechromelabs.github.io/chrome-for-testing/known-good-versions-with-downloads.json"
+        
+        # 最新の対応ChromeDriverバージョンを取得
+        CHROMEDRIVER_VERSION=$(curl -s $CHROMEDRIVER_JSON_URL | \
+          python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+versions = data['versions']
+chrome_major = '$CHROME_MAJOR_VERSION'
+latest_version = None
+for version in reversed(versions):
+    if version['version'].startswith(chrome_major + '.') and 'chromedriver' in version['downloads']:
+        for download in version['downloads']['chromedriver']:
+            if download['platform'] == 'linux64':
+                latest_version = version['version']
+                break
+        if latest_version:
+            break
+print(latest_version if latest_version else '')
+")
+        
+        if [ -z "$CHROMEDRIVER_VERSION" ]; then
+          echo "Compatible ChromeDriver not found, using fallback"
+          CHROMEDRIVER_VERSION="136.0.7103.92"
+        fi
+        
+        echo "Using ChromeDriver version: $CHROMEDRIVER_VERSION"
+        
+        # ChromeDriverをダウンロード
+        CHROMEDRIVER_URL="https://storage.googleapis.com/chrome-for-testing-public/$CHROMEDRIVER_VERSION/linux64/chromedriver-linux64.zip"
+        
+        echo "Downloading from: $CHROMEDRIVER_URL"
+        wget -O /tmp/chromedriver.zip "$CHROMEDRIVER_URL"
+        
+        # ChromeDriverを展開・インストール
+        sudo unzip /tmp/chromedriver.zip -d /tmp/
+        sudo mv /tmp/chromedriver-linux64/chromedriver /usr/local/bin/
         sudo chmod +x /usr/local/bin/chromedriver
         
-        echo "Chrome version: $(google-chrome --version)"
-        echo "ChromeDriver version: $(chromedriver --version)"
+        # バージョン確認
+        echo "Installed versions:"
+        google-chrome --version
+        chromedriver --version
     
     - name: Install Python dependencies
       run: |
@@ -57,7 +105,7 @@ jobs:
         python scripts/update_prices.py
         echo "Price update completed at $(date '+%Y-%m-%d %H:%M:%S JST')"
       env:
-        TARGET_ITEMS: ${{ github.event.inputs.target_items || '50' }}
+        TARGET_ITEMS: ${{ github.event.inputs.target_items || '10' }}
         PYTHONPATH: ${{ github.workspace }}
     
     - name: Check for changes
@@ -90,19 +138,3 @@ jobs:
         git push
         
         echo "Updated ${UPDATED_COUNT} items and pushed to repository"
-    
-    - name: Generate summary
-      run: |
-        echo "## MapleStory Equipment Price Update Results" >> $GITHUB_STEP_SUMMARY
-        echo "| Item | Result |" >> $GITHUB_STEP_SUMMARY
-        echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
-        echo "| Execution Time | $(date '+%Y-%m-%d %H:%M:%S JST') |" >> $GITHUB_STEP_SUMMARY
-        echo "| Data Changed | ${{ steps.check-changes.outputs.changed }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| Target Items | ${{ env.TARGET_ITEMS }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| Workflow Run ID | ${{ github.run_id }} |" >> $GITHUB_STEP_SUMMARY
-        
-        if [ "${{ steps.check-changes.outputs.changed }}" == "true" ]; then
-          echo "| Status | ✅ Price update successful |" >> $GITHUB_STEP_SUMMARY
-        else
-          echo "| Status | ℹ️ No changes detected |" >> $GITHUB_STEP_SUMMARY
-        fi
