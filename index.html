@@ -842,7 +842,7 @@
                 }
             }
             
-            // 修正されたセット検出関数（Royal Von LeonをChaos Abyssから除外）
+            // 修正されたセット検出関数（Royal Black Metal Shoulderを独立させる）
             detectSetName(itemName) {
                 try {
                     if (!itemName || typeof itemName !== 'string') {
@@ -850,17 +850,17 @@
                     }
                     
                     const setPatterns = [
-                        // Chaos Abyss セットに統合（Royal Von Leonを除外）
+                        // Chaos Abyss セットに統合（Royal Von Leon と Royal Black Metal Shoulder を除外）
                         /^(Eagle Eye)\s/i,
                         /^(Trixter)\s/i,
-                        /^(Royal)\s(?!Von Leon)/i, // Royal Von Leonを除外
+                        /^(Royal)\s(?!Von Leon|Black Metal)/i, // Royal Von Leon と Royal Black Metal を除外
                         /^(Fafnir)\s/i,
                         
                         // Necro セットに統合
                         /^(Necromancer)\s/i,
                         /^(Necro)\s/i,
                         
-                        // Royal Von Leonは独立したセット
+                        // 独立したセット（Royal関連で除外されたもの）
                         /^(Royal Von Leon)\s/i,
                         
                         // その他のセット
@@ -880,7 +880,7 @@
                         if (match && match[1]) {
                             const setName = match[1];
                             
-                            // セット名の統合処理（Royal Von Leon除外）
+                            // セット名の統合処理（Royal Black Metal は除外）
                             if (['Eagle Eye', 'Trixter', 'Royal', 'Fafnir'].includes(setName)) {
                                 return 'Chaos Abyss';
                             }
