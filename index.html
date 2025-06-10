@@ -29,7 +29,7 @@
         
         .main-content {
             flex: 1;
-            margin-right: 350px; /* A/B切り替えサイドバー用のスペース拡大 */
+            margin-right: 350px;
         }
         
         .header {
@@ -445,18 +445,20 @@
         
         .comparison-title {
             font-weight: bold;
-            font-size: 10px;
-            margin-bottom: 4px;
+            font-size: 13px; /* 12px → 13px に拡大 */
+            margin-bottom: 8px; /* 6px → 8px に拡大 */
             color: #495057;
+            text-align: center;
         }
         
         .comparison-item {
-            font-size: 9px;
-            margin-bottom: 4px;
-            padding: 4px;
+            font-size: 14px; /* 13px → 14px に拡大 */
+            margin-bottom: 8px; /* 5px → 8px に拡大 */
+            padding: 8px 10px; /* 6px 8px → 8px 10px に拡大 */
             background: white;
-            border-radius: 2px;
-            line-height: 1.3;
+            border-radius: 4px; /* 3px → 4px に拡大 */
+            line-height: 1.5; /* 1.4 → 1.5 に改善 */
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         }
         
         .loading {
@@ -614,7 +616,7 @@
                 <button class="control-btn clear-btn" onclick="clearSet('b')">セットBクリア</button>
                 <button class="control-btn compare-btn" onclick="compareAllSets()">詳細比較</button>
                 <div class="comparison-section" id="comparisonSection" style="display: none;">
-                    <div class="comparison-title">セット比較結果</div>
+                    <div class="comparison-title">🆚 セット比較結果</div>
                     <div id="comparisonList"></div>
                 </div>
             </div>
@@ -627,8 +629,8 @@
             constructor() {
                 this.rawData = {};
                 this.filteredData = [];
-                this.selectedItemsA = new Map(); // セットA用
-                this.selectedItemsB = new Map(); // セットB用
+                this.selectedItemsA = new Map();
+                this.selectedItemsB = new Map();
                 this.currentPage = 1;
                 this.itemsPerPage = 50;
                 this.sortField = 'name';
@@ -804,6 +806,24 @@
             formatPrice(price) {
                 if (price === 0) return '未取得';
                 return price.toLocaleString() + ' NESO';
+            }
+            
+            // 短縮価格表示関数を追加
+            formatPriceShort(price) {
+                if (price === 0) return '未取得';
+                
+                if (price >= 1000000) {
+                    // 100万以上はM表記（少数第3位で四捨五入）
+                    const millions = Math.round((price / 1000000) * 100) / 100;
+                    return millions + 'M';
+                } else if (price >= 1000) {
+                    // 1000以上はK表記（少数第3位で四捨五入）
+                    const thousands = Math.round((price / 1000) * 100) / 100;
+                    return thousands + 'K';
+                } else {
+                    // 1000未満はそのまま
+                    return price.toString();
+                }
             }
             
             getPriceClass(price) {
@@ -987,7 +1007,6 @@
                 });
             }
             
-            // A/B選択システム
             toggleItem(itemId, set) {
                 const item = this.rawData[itemId];
                 if (!item) return;
@@ -1027,7 +1046,7 @@
                         <img src="${item.image_url}" alt="${item.item_name}" onerror="this.style.display='none'">
                         <div class="selected-item-info">
                             <div class="selected-item-name">${item.item_name}</div>
-                            <div class="selected-item-price">${this.formatPrice(price)}</div>
+                            <div class="selected-item-price">${this.formatPriceShort(price)} NESO</div>
                         </div>
                         <button class="remove-btn" onclick="tracker.toggleItem('${itemId}', '${set}')">×</button>
                     `;
@@ -1041,8 +1060,8 @@
                 const totalB = Array.from(this.selectedItemsB.values())
                     .reduce((sum, item) => sum + this.parsePrice(item.item_price), 0);
                 
-                document.getElementById('totalPriceA').textContent = `セットA: ${this.formatPrice(totalA)}`;
-                document.getElementById('totalPriceB').textContent = `セットB: ${this.formatPrice(totalB)}`;
+                document.getElementById('totalPriceA').textContent = `セットA: ${this.formatPriceShort(totalA)} NESO`;
+                document.getElementById('totalPriceB').textContent = `セットB: ${this.formatPriceShort(totalB)} NESO`;
             }
             
             async refreshData() {
@@ -1132,16 +1151,27 @@
                 
                 if (itemA && itemB) {
                     const diff = itemB.price - itemA.price;
-                    const diffText = diff > 0 ? `+${tracker.formatPrice(diff)}` : tracker.formatPrice(diff);
-                    html += `A: ${itemA.item.item_name.substring(0, 15)}... (${tracker.formatPrice(itemA.price)})<br>`;
-                    html += `B: ${itemB.item.item_name.substring(0, 15)}... (${tracker.formatPrice(itemB.price)})<br>`;
-                    html += `差額: ${diffText}`;
+                    const diffText = diff >= 0 ? `+${tracker.formatPriceShort(Math.abs(diff))}` : `-${tracker.formatPriceShort(Math.abs(diff))}`;
+                    
+                    // アイテム名を短縮（13文字まで）
+                    const nameA = itemA.item.item_name.length > 13 ? 
+                        itemA.item.item_name.substring(0, 13) + '...' : itemA.item.item_name;
+                    const nameB = itemB.item.item_name.length > 13 ? 
+                        itemB.item.item_name.substring(0, 13) + '...' : itemB.item.item_name;
+                    
+                    html += `A: ${nameA} (${tracker.formatPriceShort(itemA.price)})<br>`;
+                    html += `B: ${nameB} (${tracker.formatPriceShort(itemB.price)})<br>`;
+                    html += `差額: ${diffText} NESO`;
                 } else if (itemA) {
-                    html += `A: ${itemA.item.item_name.substring(0, 20)}... (${tracker.formatPrice(itemA.price)})<br>`;
+                    const nameA = itemA.item.item_name.length > 16 ? 
+                        itemA.item.item_name.substring(0, 16) + '...' : itemA.item.item_name;
+                    html += `A: ${nameA} (${tracker.formatPriceShort(itemA.price)})<br>`;
                     html += `B: 未選択`;
                 } else if (itemB) {
+                    const nameB = itemB.item.item_name.length > 16 ? 
+                        itemB.item.item_name.substring(0, 16) + '...' : itemB.item.item_name;
                     html += `A: 未選択<br>`;
-                    html += `B: ${itemB.item.item_name.substring(0, 20)}... (${tracker.formatPrice(itemB.price)})`;
+                    html += `B: ${nameB} (${tracker.formatPriceShort(itemB.price)})`;
                 }
                 
                 comparisonDiv.innerHTML = html;
