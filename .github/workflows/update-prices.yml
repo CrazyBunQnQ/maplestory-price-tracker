@@ -1,0 +1,123 @@
+name: 🍁 MapleStory装備価格自動更新
+
+# トリガー設定
+on:
+  schedule:
+    # 毎30分実行 (JST: 9:00, 9:30, 10:00...)
+    - cron: '*/30 * * * *'
+  workflow_dispatch:  # 手動実行ボタン
+    inputs:
+      target_items:
+        description: '更新するアイテム数 (デフォルト: 50)'
+        default: '50'
+        type: string
+
+# 環境変数
+env:
+  TZ: Asia/Tokyo
+
+jobs:
+  update-prices:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    
+    steps:
+    # 1. リポジトリをチェックアウト
+    - name: 📁 リポジトリをチェックアウト
+      uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+    
+    # 2. Python環境をセットアップ
+    - name: 🐍 Python 3.11をセットアップ
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+    
+    # 3. Chrome/ChromeDriverをインストール
+    - name: 🌐 Chrome環境をセットアップ
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y google-chrome-stable
+        
+        # ChromeDriverの最新版を取得
+        CHROME_VERSION=$(google-chrome --version | cut -d ' ' -f3 | cut -d '.' -f1-3)
+        DRIVER_VERSION=$(curl -s "https://chromedriver.storage.googleapis.com/LATEST_RELEASE_${CHROME_VERSION}")
+        
+        # ChromeDriverをダウンロード・インストール
+        wget -O /tmp/chromedriver.zip "https://chromedriver.storage.googleapis.com/${DRIVER_VERSION}/chromedriver_linux64.zip"
+        sudo unzip /tmp/chromedriver.zip -d /usr/local/bin/
+        sudo chmod +x /usr/local/bin/chromedriver
+        
+        echo "Chrome version: $(google-chrome --version)"
+        echo "ChromeDriver version: $(chromedriver --version)"
+    
+    # 4. Python依存関係をインストール
+    - name: 📦 依存関係をインストール
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    # 5. 価格更新スクリプトを実行
+    - name: 💰 装備価格を更新
+      run: |
+        echo "🔄 価格更新開始: $(date '+%Y-%m-%d %H:%M:%S JST')"
+        python scripts/update_prices.py
+        echo "✅ 価格更新完了: $(date '+%Y-%m-%d %H:%M:%S JST')"
+      env:
+        TARGET_ITEMS: ${{ github.event.inputs.target_items || '50' }}
+        PYTHONPATH: ${{ github.workspace }}
+    
+    # 6. 変更があるかチェック
+    - name: 🔍 変更があるかチェック
+      id: check-changes
+      run: |
+        if [ -n "$(git status --porcelain data/equipment_prices.json)" ]; then
+          echo "changed=true" >> $GITHUB_OUTPUT
+          echo "📊 データに変更がありました"
+        else
+          echo "changed=false" >> $GITHUB_OUTPUT
+          echo "📊 データに変更はありませんでした"
+        fi
+    
+    # 7. 変更をコミット・プッシュ
+    - name: 💾 変更をコミット・プッシュ
+      if: steps.check-changes.outputs.changed == 'true'
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action Bot"
+        
+        # 統計情報を取得
+        UPDATED_COUNT=$(git diff data/equipment_prices.json | grep -c '^\+.*item_price' || echo "0")
+        CURRENT_TIME=$(date '+%Y-%m-%d %H:%M:%S JST')
+        
+        git add data/equipment_prices.json
+        git commit -m "🔄 装備価格データを自動更新
+
+📅 更新日時: ${CURRENT_TIME}
+📊 更新件数: ${UPDATED_COUNT}件
+🤖 自動実行: GitHub Actions
+
+Closes #price-update"
+        
+        git push
+        
+        echo "✅ ${UPDATED_COUNT}件の価格を更新してプッシュしました"
+    
+    # 8. 実行結果をサマリー出力
+    - name: 📋 実行結果サマリー
+      run: |
+        echo "## 🍁 MapleStory装備価格更新結果" >> $GITHUB_STEP_SUMMARY
+        echo "| 項目 | 結果 |" >> $GITHUB_STEP_SUMMARY
+        echo "|------|------|" >> $GITHUB_STEP_SUMMARY
+        echo "| 実行時刻 | $(date '+%Y-%m-%d %H:%M:%S JST') |" >> $GITHUB_STEP_SUMMARY
+        echo "| データ変更 | ${{ steps.check-changes.outputs.changed }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| 対象アイテム数 | ${{ env.TARGET_ITEMS }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| ワークフロー実行ID | ${{ github.run_id }} |" >> $GITHUB_STEP_SUMMARY
+        
+        if [ "${{ steps.check-changes.outputs.changed }}" == "true" ]; then
+          echo "| ステータス | ✅ 価格更新成功 |" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "| ステータス | ℹ️ 変更なし |" >> $GITHUB_STEP_SUMMARY
+        fi
