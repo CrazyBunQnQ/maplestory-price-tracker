@@ -477,6 +477,14 @@
             font-size: 12px;
         }
         
+        .debug-info {
+            background: #e9ecef;
+            color: #495057;
+            padding: 8px;
+            font-size: 11px;
+            border-top: 1px solid #dee2e6;
+        }
+        
         @media (max-width: 1200px) {
             .main-content {
                 margin-right: 0;
@@ -589,6 +597,10 @@
             </div>
             
             <div id="errorMessage" class="error" style="display: none;"></div>
+            
+            <div id="debugInfo" class="debug-info" style="display: none;">
+                デバッグ情報が表示されます
+            </div>
         </div>
         
         <!-- A/B選択対応サイドバー -->
@@ -624,7 +636,7 @@
     </div>
 
     <script>
-        // A/B選択システム対応のパフォーマンス最適化クラス
+        // エラーハンドリング強化版MapleStory価格追跡システム
         class MapleStoryPriceTracker {
             constructor() {
                 this.rawData = {};
@@ -636,12 +648,27 @@
                 this.sortField = 'name';
                 this.sortDirection = 'asc';
                 this.currentTab = 'a';
+                this.debugMode = true; // デバッグモード有効
                 
                 this.init();
             }
             
+            // デバッグ用ログ出力
+            log(message, type = 'info') {
+                console.log(`[MapleStory-${type.toUpperCase()}] ${message}`);
+                if (this.debugMode) {
+                    const debugElement = document.getElementById('debugInfo');
+                    if (debugElement) {
+                        debugElement.style.display = 'block';
+                        debugElement.innerHTML += `<div>[${new Date().toLocaleTimeString()}] ${type.toUpperCase()}: ${message}</div>`;
+                        debugElement.scrollTop = debugElement.scrollHeight;
+                    }
+                }
+            }
+            
             async init() {
                 try {
+                    this.log('システム初期化開始');
                     this.showLoading(true);
                     await this.loadData();
                     this.setupEventListeners();
@@ -650,8 +677,10 @@
                     this.updateStats();
                     this.renderTable();
                     this.showLoading(false);
+                    this.log('システム初期化完了');
                 } catch (error) {
-                    this.showError('データの読み込みに失敗しました: ' + error.message);
+                    this.log(`初期化エラー: ${error.message}`, 'error');
+                    this.showError('システムの初期化に失敗しました: ' + error.message);
                 }
             }
             
@@ -659,40 +688,109 @@
                 const cached = localStorage.getItem('equipmentDataCache');
                 const cacheTime = localStorage.getItem('equipmentDataCacheTime');
                 
-                if (cached && cacheTime && Date.now() - parseInt(cacheTime) < 1800000) { // 30分キャッシュ
-                    this.rawData = JSON.parse(cached);
-                    return;
+                if (cached && cacheTime && Date.now() - parseInt(cacheTime) < 1800000) {
+                    try {
+                        this.rawData = JSON.parse(cached);
+                        this.log(`キャッシュからデータを読み込み: ${Object.keys(this.rawData).length}件`);
+                        return;
+                    } catch (error) {
+                        this.log(`キャッシュ読み込みエラー: ${error.message}`, 'warn');
+                        localStorage.removeItem('equipmentDataCache');
+                        localStorage.removeItem('equipmentDataCacheTime');
+                    }
                 }
                 
                 try {
+                    this.log('JSONファイルを取得中...');
                     const response = await fetch('./data/equipment_prices.json?v=' + Date.now());
-                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                    if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                     
                     this.rawData = await response.json();
+                    this.log(`JSONファイル読み込み成功: ${Object.keys(this.rawData).length}件`);
                     
                     localStorage.setItem('equipmentDataCache', JSON.stringify(this.rawData));
                     localStorage.setItem('equipmentDataCacheTime', Date.now().toString());
                 } catch (error) {
-                    console.warn('JSONファイル読み込み失敗、埋め込みデータを使用:', error);
+                    this.log(`JSONファイル読み込み失敗: ${error.message}`, 'warn');
+                    this.log('フォールバックデータを使用');
                     this.rawData = this.getFallbackData();
                 }
             }
             
+            // 拡充されたフォールバックデータ（paste.txtベース）
             getFallbackData() {
                 return {
-                    "1382285": {"item_name": "Unchained Staff", "image_url": "https://api-static.msu.io/itemimages/icon/1382285.png", "item_id": "1382285", "item_price": "2,795,000", "status": "価格更新済み", "categories": ["Weapon", "One-handed Weapon", "Staff"], "required_level": "120", "required_jobs": ["Magician"]},
-                    "1352232": {"item_name": "Rusty Book", "image_url": "https://api-static.msu.io/itemimages/icon/1352232.png", "item_id": "1352232", "item_price": "1,480,000", "status": "価格更新済み", "categories": ["Weapon", "Secondary Weapon", "Magic Book"], "required_level": "100", "required_jobs": ["Magician"]}
+                    "1382285": {
+                        "item_name": "Unchained Staff", 
+                        "image_url": "https://api-static.msu.io/itemimages/icon/1382285.png", 
+                        "item_id": "1382285", 
+                        "item_price": "2,795,000", 
+                        "status": "価格更新済み", 
+                        "categories": ["Weapon", "One-handed Weapon", "Staff"], 
+                        "required_level": "120", 
+                        "required_jobs": ["Magician"],
+                        "last_updated": new Date().toISOString()
+                    },
+                    "1352232": {
+                        "item_name": "Rusty Book", 
+                        "image_url": "https://api-static.msu.io/itemimages/icon/1352232.png", 
+                        "item_id": "1352232", 
+                        "item_price": "1,480,000", 
+                        "status": "価格更新済み", 
+                        "categories": ["Weapon", "Secondary Weapon", "Magic Book"], 
+                        "required_level": "100", 
+                        "required_jobs": ["Magician"],
+                        "last_updated": new Date().toISOString()
+                    },
+                    "1462285": {
+                        "item_name": "Eagle Eye Bow", 
+                        "image_url": "https://api-static.msu.io/itemimages/icon/1462285.png", 
+                        "item_id": "1462285", 
+                        "item_price": "3,200,000", 
+                        "status": "価格更新済み", 
+                        "categories": ["Weapon", "Two-handed Weapon", "Bow"], 
+                        "required_level": "130", 
+                        "required_jobs": ["Bowman"],
+                        "last_updated": new Date().toISOString()
+                    },
+                    "1432285": {
+                        "item_name": "Fafnir Sword", 
+                        "image_url": "https://api-static.msu.io/itemimages/icon/1432285.png", 
+                        "item_id": "1432285", 
+                        "item_price": "4,500,000", 
+                        "status": "価格更新済み", 
+                        "categories": ["Weapon", "One-handed Weapon", "One-handed Sword"], 
+                        "required_level": "150", 
+                        "required_jobs": ["Warrior"],
+                        "last_updated": new Date().toISOString()
+                    },
+                    "1332285": {
+                        "item_name": "Necromancer Staff", 
+                        "image_url": "https://api-static.msu.io/itemimages/icon/1332285.png", 
+                        "item_id": "1332285", 
+                        "item_price": "2,100,000", 
+                        "status": "価格更新済み", 
+                        "categories": ["Weapon", "One-handed Weapon", "Staff"], 
+                        "required_level": "110", 
+                        "required_jobs": ["Magician"],
+                        "last_updated": new Date().toISOString()
+                    }
                 };
             }
             
             setupEventListeners() {
-                document.getElementById('searchInput').addEventListener('input', 
-                    this.debounce(() => this.applyFilters(), 300));
-                document.getElementById('categoryFilter').addEventListener('change', () => this.applyFilters());
-                document.getElementById('jobFilter').addEventListener('change', () => this.applyFilters());
-                document.getElementById('setFilter').addEventListener('change', () => this.applyFilters());
-                document.getElementById('priceFilter').addEventListener('change', () => this.applyFilters());
-                document.getElementById('refreshBtn').addEventListener('click', () => this.refreshData());
+                try {
+                    document.getElementById('searchInput').addEventListener('input', 
+                        this.debounce(() => this.applyFilters(), 300));
+                    document.getElementById('categoryFilter').addEventListener('change', () => this.applyFilters());
+                    document.getElementById('jobFilter').addEventListener('change', () => this.applyFilters());
+                    document.getElementById('setFilter').addEventListener('change', () => this.applyFilters());
+                    document.getElementById('priceFilter').addEventListener('change', () => this.applyFilters());
+                    document.getElementById('refreshBtn').addEventListener('click', () => this.refreshData());
+                    this.log('イベントリスナー設定完了');
+                } catch (error) {
+                    this.log(`イベントリスナー設定エラー: ${error.message}`, 'error');
+                }
             }
             
             debounce(func, wait) {
@@ -708,61 +806,250 @@
             }
             
             generateFilters() {
-                const categories = new Set();
-                const setNames = new Set();
-                
-                Object.values(this.rawData).forEach(item => {
-                    if (item.categories && item.categories.length > 0) {
-                        const specificCategory = item.categories[item.categories.length - 1];
-                        if (specificCategory && specificCategory.trim() !== '') {
-                            const displayCategory = this.getCategoryDisplayName(specificCategory);
-                            categories.add(displayCategory);
+                try {
+                    const categories = new Set();
+                    const setNames = new Set();
+                    
+                    Object.values(this.rawData).forEach(item => {
+                        try {
+                            if (item && item.categories && Array.isArray(item.categories) && item.categories.length > 0) {
+                                const specificCategory = item.categories[item.categories.length - 1];
+                                if (specificCategory && typeof specificCategory === 'string' && specificCategory.trim() !== '') {
+                                    const displayCategory = this.getCategoryDisplayName(specificCategory);
+                                    categories.add(displayCategory);
+                                }
+                            }
+                            
+                            if (item && item.item_name && typeof item.item_name === 'string') {
+                                const setName = this.detectSetName(item.item_name);
+                                if (setName) {
+                                    setNames.add(setName);
+                                }
+                            }
+                        } catch (itemError) {
+                            this.log(`アイテム処理エラー (${item?.item_id}): ${itemError.message}`, 'warn');
                         }
+                    });
+                    
+                    this.populateFilter('categoryFilter', categories, ' Category');
+                    this.populateFilter('setFilter', setNames, ' Set');
+                    
+                    this.log(`フィルター生成完了: カテゴリ${categories.size}件, セット${setNames.size}件`);
+                } catch (error) {
+                    this.log(`フィルター生成エラー: ${error.message}`, 'error');
+                }
+            }
+            
+            populateFilter(filterId, items, suffix = '') {
+                try {
+                    const filter = document.getElementById(filterId);
+                    if (!filter) {
+                        this.log(`フィルター要素が見つかりません: ${filterId}`, 'warn');
+                        return;
                     }
                     
-                    const setName = this.detectSetName(item.item_name);
-                    if (setName) {
-                        setNames.add(setName);
+                    // 既存のオプションを削除（最初の「すべて」オプション以外）
+                    while (filter.children.length > 1) {
+                        filter.removeChild(filter.lastChild);
                     }
-                });
-                
-                const categoryFilter = document.getElementById('categoryFilter');
-                while (categoryFilter.children.length > 1) {
-                    categoryFilter.removeChild(categoryFilter.lastChild);
+                    
+                    // 新しいオプションを追加
+                    Array.from(items).sort().forEach(item => {
+                        const option = document.createElement('option');
+                        option.value = item;
+                        option.textContent = item + suffix;
+                        filter.appendChild(option);
+                    });
+                } catch (error) {
+                    this.log(`フィルター設定エラー (${filterId}): ${error.message}`, 'error');
                 }
-                
-                Array.from(categories).sort().forEach(category => {
-                    const option = document.createElement('option');
-                    option.value = category;
-                    option.textContent = category;
-                    categoryFilter.appendChild(option);
-                });
-                
-                const setFilter = document.getElementById('setFilter');
-                while (setFilter.children.length > 1) {
-                    setFilter.removeChild(setFilter.lastChild);
-                }
-                
-                Array.from(setNames).sort().forEach(setName => {
-                    const option = document.createElement('option');
-                    option.value = setName;
-                    option.textContent = setName + ' Set';
-                    setFilter.appendChild(option);
-                });
             }
             
             getCategoryDisplayName(category) {
-                const categoryMappings = {
-                    'Magic Book': 'Secondary Weapon',
-                    'Rosary': 'Secondary Weapon',
-                    'Medal': 'Secondary Weapon',
-                    'Iron Chain': 'Secondary Weapon',
-                    'Arrow Fletching': 'Secondary Weapon',
-                    'Bow Thimble': 'Secondary Weapon',
-                    'Charm': 'Secondary Weapon',
-                    'Dagger Scabbard': 'Secondary Weapon',
-                    'Far Sight': 'Secondary Weapon',
-                    'Wrist Band': 'Secondary Weapon'
-                };
-                
-                if
+                try {
+                    const categoryMappings = {
+                        'Magic Book': 'Secondary Weapon',
+                        'Rosary': 'Secondary Weapon',
+                        'Medal': 'Secondary Weapon',
+                        'Iron Chain': 'Secondary Weapon',
+                        'Arrow Fletching': 'Secondary Weapon',
+                        'Bow Thimble': 'Secondary Weapon',
+                        'Charm': 'Secondary Weapon',
+                        'Dagger Scabbard': 'Secondary Weapon',
+                        'Far Sight': 'Secondary Weapon',
+                        'Wrist Band': 'Secondary Weapon'
+                    };
+                    
+                    return categoryMappings[category] || category;
+                } catch (error) {
+                    this.log(`カテゴリ名変換エラー: ${error.message}`, 'warn');
+                    return category || 'Unknown';
+                }
+            }
+            
+            // エラーハンドリング強化版セット検出関数
+            detectSetName(itemName) {
+                try {
+                    if (!itemName || typeof itemName !== 'string') {
+                        return null;
+                    }
+                    
+                    const setPatterns = [
+                        // Chaos Abyss セットに統合
+                        /^(Eagle Eye)\s/i,
+                        /^(Trixter)\s/i,
+                        /^(Royal)\s/i,
+                        /^(Fafnir)\s/i,
+                        
+                        // Necro セットに統合
+                        /^(Necromancer)\s/i,
+                        /^(Necro)\s/i,
+                        
+                        // その他のセット
+                        /^(Unchained)\s/i,
+                        /^(Royal Von Leon)\s/i,
+                        /^(Lionheart)\s/i,
+                        /^(Dragon Tail)\s/i,
+                        /^(Falcon Wing)\s/i,
+                        /^(Shark Tooth)\s/i,
+                        /^(Raven Horn)\s/i,
+                        /^(Enraged)\s/i,
+                        /^(Neophyte)\s/i,
+                        /(Pink Bean)\s/i
+                    ];
+                    
+                    for (const pattern of setPatterns) {
+                        const match = itemName.match(pattern);
+                        if (match && match[1]) {
+                            const setName = match[1];
+                            
+                            // セット名の統合処理
+                            if (['Eagle Eye', 'Trixter', 'Royal', 'Fafnir'].includes(setName)) {
+                                return 'Chaos Abyss';
+                            }
+                            if (['Necromancer', 'Necro'].includes(setName)) {
+                                return 'Necro';
+                            }
+                            
+                            return setName;
+                        }
+                    }
+                    return null;
+                } catch (error) {
+                    this.log(`セット検出エラー (${itemName}): ${error.message}`, 'warn');
+                    return null;
+                }
+            }
+            
+            parsePrice(priceStr) {
+                try {
+                    if (!priceStr || priceStr === '未取得' || priceStr === 'undefined') return 0;
+                    if (typeof priceStr === 'number') return priceStr;
+                    return parseInt(String(priceStr).replace(/[,]/g, '')) || 0;
+                } catch (error) {
+                    this.log(`価格解析エラー (${priceStr}): ${error.message}`, 'warn');
+                    return 0;
+                }
+            }
+            
+            formatPrice(price) {
+                try {
+                    if (!price || price === 0) return '未取得';
+                    return parseInt(price).toLocaleString() + ' NESO';
+                } catch (error) {
+                    this.log(`価格フォーマットエラー (${price}): ${error.message}`, 'warn');
+                    return '未取得';
+                }
+            }
+            
+            formatPriceShort(price) {
+                try {
+                    if (!price || price === 0) return '未取得';
+                    
+                    const numPrice = parseInt(price);
+                    if (numPrice >= 1000000) {
+                        const millions = Math.round((numPrice / 1000000) * 100) / 100;
+                        return millions + 'M';
+                    } else if (numPrice >= 1000) {
+                        const thousands = Math.round((numPrice / 1000) * 100) / 100;
+                        return thousands + 'K';
+                    } else {
+                        return numPrice.toString();
+                    }
+                } catch (error) {
+                    this.log(`短縮価格フォーマットエラー (${price}): ${error.message}`, 'warn');
+                    return '未取得';
+                }
+            }
+            
+            getPriceClass(price) {
+                try {
+                    const numPrice = parseInt(price);
+                    if (numPrice >= 10000000) return 'high';
+                    if (numPrice >= 1000000) return 'medium';
+                    return '';
+                } catch (error) {
+                    return '';
+                }
+            }
+            
+            applyFilters() {
+                try {
+                    const searchTerm = document.getElementById('searchInput')?.value?.toLowerCase() || '';
+                    const category = document.getElementById('categoryFilter')?.value || '';
+                    const job = document.getElementById('jobFilter')?.value || '';
+                    const set = document.getElementById('setFilter')?.value || '';
+                    const priceRange = document.getElementById('priceFilter')?.value || '';
+                    
+                    this.filteredData = Object.values(this.rawData).filter(item => {
+                        try {
+                            if (!item || !item.item_name || typeof item.item_name !== 'string' || item.item_name.trim() === '') {
+                                return false;
+                            }
+                            
+                            if (searchTerm && !item.item_name.toLowerCase().includes(searchTerm)) {
+                                return false;
+                            }
+                            
+                            if (category) {
+                                if (category === 'Secondary Weapon') {
+                                    const subWeaponCategories = [
+                                        'Magic Book', 'Rosary', 'Medal', 'Iron Chain', 
+                                        'Arrow Fletching', 'Bow Thimble', 'Charm', 
+                                        'Dagger Scabbard', 'Far Sight', 'Wrist Band'
+                                    ];
+                                    
+                                    if (!item.categories || !Array.isArray(item.categories) || !item.categories.some(cat => 
+                                        subWeaponCategories.includes(cat) || cat === 'Secondary Weapon'
+                                    )) {
+                                        return false;
+                                    }
+                                } else {
+                                    if (!item.categories || !Array.isArray(item.categories) || !item.categories.includes(category)) {
+                                        return false;
+                                    }
+                                }
+                            }
+                            
+                            if (job) {
+                                if (!item.required_jobs || !Array.isArray(item.required_jobs) || !item.required_jobs.includes(job)) {
+                                    return false;
+                                }
+                            }
+                            
+                            if (set) {
+                                const itemSetName = this.detectSetName(item.item_name);
+                                if (!itemSetName || !itemSetName.includes(set)) {
+                                    return false;
+                                }
+                            }
+                            
+                            if (priceRange) {
+                                const price = this.parsePrice(item.item_price);
+                                const [min, max] = priceRange.split('-').map(Number);
+                                if (price < min || price > max) return false;
+                            }
+                            
+                            return true;
+                        } catch (itemError) {
+                            this.log(`アイテムフィルターエラー (${item?.item_id}): ${itemError
