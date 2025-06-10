@@ -12,6 +12,8 @@ from selenium.webdriver.support.ui import WebDriverWait
 import re
 from datetime import datetime
 import functools
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -39,24 +41,42 @@ def retry_on_error(max_retries=3, delay=2):
 class GitHubActionsUpdater:
     def __init__(self, json_file_path="data/equipment_prices.json"):
         self.json_file_path = json_file_path
-        self.target_items = int(os.getenv('TARGET_ITEMS', '10'))
+        self.target_items_input = os.getenv('TARGET_ITEMS', 'ALL')
         self.updated_count = 0
+        self.lock = threading.Lock()
+        
+        # 全件処理か制限処理かを判定
+        if self.target_items_input.upper() == 'ALL':
+            self.target_items = None  # 制限なし
+            self.use_parallel = True  # 並行処理使用
+        else:
+            try:
+                self.target_items = int(self.target_items_input)
+                self.use_parallel = False  # シングルスレッド処理
+            except ValueError:
+                self.target_items = 10  # デフォルト
+                self.use_parallel = False
 
     def setup_driver(self):
-        """Seleniumドライバーの設定（GitHub Actions対応）"""
+        """Seleniumドライバーの設定（GitHub Actions + 並行処理対応）"""
         chrome_options = Options()
+        
         # GitHub Actions用設定
         chrome_options.add_argument("--headless=new")
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-dev-shm-usage")
         chrome_options.add_argument("--disable-gpu")
         chrome_options.add_argument("--window-size=1920,1080")
+        
+        # paste-2.txtの並行処理対応設定
+        chrome_options.add_argument("--remote-debugging-port=0")
         chrome_options.add_argument("--disable-extensions")
+        chrome_options.add_argument("--disable-plugins")
         chrome_options.add_argument("--disable-logging")
         chrome_options.add_argument("--log-level=3")
         chrome_options.add_argument("--silent")
         
-        # ボット検出回避設定（paste-3.txtより）
+        # ボット検出回避設定
         chrome_options.add_argument("--disable-blink-features=AutomationControlled")
         chrome_options.add_experimental_option("excludeSwitches", ["enable-automation", "enable-logging"])
         chrome_options.add_experimental_option('useAutomationExtension', False)
@@ -75,7 +95,7 @@ class GitHubActionsUpdater:
         return driver
 
     def search_equipment_js(self, driver, equipment_name):
-        """JavaScriptを使用した検索実行（paste-3.txtより）"""
+        """JavaScriptを使用した検索実行（paste.txt/paste-2.txtより）"""
         try:
             driver.get("https://msu.io/navigator")
             WebDriverWait(driver, 15).until(
@@ -83,7 +103,6 @@ class GitHubActionsUpdater:
             )
             time.sleep(3)
 
-            # paste-3.txtの検索ロジックを使用
             search_success = driver.execute_script("""
                 let searchField = null;
                 const selectors = [
@@ -117,14 +136,14 @@ class GitHubActionsUpdater:
             if not search_success:
                 raise Exception("Search field not found")
 
-            time.sleep(4)
+            time.sleep(2)  # GitHub Actions用に短縮
             return True
 
         except Exception as e:
             raise Exception(f"検索エラー: {equipment_name}, {e}")
 
     def extract_prices(self, driver):
-        """最新の価格情報5件を抽出（paste-3.txtより）"""
+        """最新の価格情報5件を抽出"""
         try:
             price_elements = driver.find_elements(
                 By.CSS_SELECTOR,
@@ -135,7 +154,6 @@ class GitHubActionsUpdater:
                 return []
 
             prices = []
-            # paste-3.txtのロジック：最新の5件のみを処理
             for element in price_elements[:5]:
                 try:
                     price_text = driver.execute_script(
@@ -154,20 +172,19 @@ class GitHubActionsUpdater:
                     continue
 
             prices.sort()
-            logger.info(f"取得した最新5件の価格: {[f'{p:,}' for p in prices]}")
+            logger.info(f"最新5件から取得した価格: {[f'{p:,}' for p in prices]}")
             return prices
 
         except Exception as e:
             raise Exception(f"価格抽出エラー: {e}")
 
     def select_optimal_price(self, prices):
-        """最新5件から100,000以下を除外し最安値を選定（paste-3.txtより）"""
+        """最新5件から100,000以下を除外し最安値を選定"""
         if not prices:
             return None
 
         logger.info(f"取得した最新5件の価格: {[f'{p:,}' for p in prices]}")
 
-        # 100,000以下の価格を除外
         filtered_prices = [price for price in prices if price > 100000]
 
         if not filtered_prices:
@@ -178,7 +195,6 @@ class GitHubActionsUpdater:
             if excluded_count > 0:
                 logger.info(f"100,000以下の価格を{excluded_count}件除外")
 
-        # 最安値を返す
         optimal_price = filtered_prices[0]
         logger.info(f"選定された最安値: {optimal_price:,}")
         
@@ -186,7 +202,7 @@ class GitHubActionsUpdater:
 
     @retry_on_error(max_retries=3, delay=2)
     def update_equipment_price_with_retry(self, equipment_id, equipment_name):
-        """特定の装備の価格を更新（paste-3.txtベース）"""
+        """特定の装備の価格を更新（paste.txt/paste-2.txtベース）"""
         driver = None
         try:
             driver = self.setup_driver()
@@ -225,9 +241,37 @@ class GitHubActionsUpdater:
                 except:
                     pass
 
+    def process_equipment_batch(self, equipment_items):
+        """装備アイテムのバッチ処理（paste-2.txtの並行処理ロジック）"""
+        results = []
+        for equipment_id, equipment_info in equipment_items:
+            equipment_name = equipment_info.get("item_name", "")
+            if not equipment_name:
+                continue
+
+            try:
+                result = self.update_equipment_price_with_retry(equipment_id, equipment_name)
+                results.append(result)
+                logger.info(f"✅ {equipment_name}: {result.get('price', 'ERROR'):,}")
+            except Exception as e:
+                results.append({
+                    'equipment_id': equipment_id,
+                    'equipment_name': equipment_name,
+                    'success': False,
+                    'error': str(e)
+                })
+                logger.error(f"❌ {equipment_name}: エラー")
+
+            time.sleep(3)  # GitHub Actions制限対応
+
+        return results
+
     def run_update(self):
-        """価格更新実行（GitHub Actions用シンプル版）"""
-        logger.info(f"GitHub Actions price update started - Target: {self.target_items} items")
+        """価格更新実行（全件 or 制限件数対応）"""
+        if self.target_items is None:
+            logger.info(f"GitHub Actions price update started - Target: ALL items (parallel processing)")
+        else:
+            logger.info(f"GitHub Actions price update started - Target: {self.target_items} items")
         
         try:
             with open(self.json_file_path, 'r', encoding='utf-8') as f:
@@ -237,23 +281,63 @@ class GitHubActionsUpdater:
             sys.exit(1)
 
         items = [(k, v) for k, v in equipment_data.items() 
-                if v.get("item_name") and k != ""][:self.target_items]
+                if v.get("item_name") and k != ""]
         
-        for i, (equipment_id, equipment_info) in enumerate(items, 1):
-            equipment_name = equipment_info.get("item_name", "")
-            logger.info(f"[{i}/{len(items)}] Processing: {equipment_name}")
-            
-            result = self.update_equipment_price_with_retry(equipment_id, equipment_name)
-            
+        # 処理対象を制限（必要に応じて）
+        if self.target_items is not None:
+            items = items[:self.target_items]
+
+        total = len(items)
+        logger.info(f"Processing {total} items")
+
+        if self.use_parallel and total > 10:
+            # paste-2.txtの並行処理ロジック
+            chunk = total // 4
+            batches = [
+                items[0:chunk],
+                items[chunk:chunk*2], 
+                items[chunk*2:chunk*3],
+                items[chunk*3:]
+            ]
+
+            logger.info(f"並行処理開始: 4ワーカー, 合計 {total}件")
+
+            all_results = []
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                futures = {
+                    executor.submit(self.process_equipment_batch, batch): idx
+                    for idx, batch in enumerate(batches, start=1)
+                }
+
+                for future in as_completed(futures):
+                    batch_no = futures[future]
+                    try:
+                        results = future.result()
+                        all_results.extend(results)
+                        logger.info(f"✅ バッチ{batch_no} 完了")
+                    except Exception as e:
+                        logger.error(f"❌ バッチ{batch_no} エラー: {e}")
+
+        else:
+            # シングルスレッド処理
+            all_results = []
+            for i, (equipment_id, equipment_info) in enumerate(items, 1):
+                equipment_name = equipment_info.get("item_name", "")
+                logger.info(f"[{i}/{total}] Processing: {equipment_name}")
+                
+                result = self.update_equipment_price_with_retry(equipment_id, equipment_name)
+                all_results.append(result)
+                
+                time.sleep(5)  # GitHub Actions制限対応
+
+        # JSONデータに反映
+        for result in all_results:
             if result.get('success'):
-                equipment_data[equipment_id]["item_price"] = f"{result['price']:,}"
-                equipment_data[equipment_id]["status"] = "価格更新済み"
+                equipment_data[result['equipment_id']]["item_price"] = f"{result['price']:,}"
+                equipment_data[result['equipment_id']]["status"] = "価格更新済み"
                 self.updated_count += 1
             else:
-                equipment_data[equipment_id]["status"] = "価格取得失敗"
-            
-            # GitHub Actions制限対応
-            time.sleep(5)
+                equipment_data[result['equipment_id']]["status"] = "価格取得失敗"
 
         try:
             with open(self.json_file_path, 'w', encoding='utf-8') as f:
@@ -263,7 +347,7 @@ class GitHubActionsUpdater:
             logger.error(f"Failed to save JSON: {e}")
             sys.exit(1)
 
-        logger.info(f"Update completed: {self.updated_count}/{len(items)} items successful")
+        logger.info(f"Update completed: {self.updated_count}/{total} items successful")
         sys.exit(0)
 
 def main():
