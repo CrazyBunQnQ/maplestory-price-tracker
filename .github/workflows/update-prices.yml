@@ -47,12 +47,12 @@ jobs:
         
         CHROMEDRIVER_JSON_URL="https://googlechromelabs.github.io/chrome-for-testing/known-good-versions-with-downloads.json"
         
-        CHROMEDRIVER_VERSION=$(curl -s $CHROMEDRIVER_JSON_URL | python3 -c "
+        cat > /tmp/get_chromedriver_version.py << 'EOF'
 import sys, json
 try:
     data = json.load(sys.stdin)
     versions = data.get('versions', [])
-    chrome_major = '$CHROME_MAJOR_VERSION'
+    chrome_major = sys.argv[1] if len(sys.argv) > 1 else ''
     latest_version = None
     
     for version in reversed(versions):
@@ -70,7 +70,9 @@ try:
     print(latest_version if latest_version else '')
 except Exception:
     print('')
-")
+EOF
+        
+        CHROMEDRIVER_VERSION=$(curl -s $CHROMEDRIVER_JSON_URL | python3 /tmp/get_chromedriver_version.py $CHROME_MAJOR_VERSION)
         
         if [ -z "$CHROMEDRIVER_VERSION" ]; then
           echo "Compatible ChromeDriver not found, using fallback version"
@@ -118,22 +120,18 @@ except Exception:
     
     - name: Commit and push changes
       if: steps.check-changes.outputs.changed == 'true'
-      run: |
-        git config --local user.email "action@github.com"
-        git config --local user.name "GitHub Action Bot"
-        
-        UPDATED_COUNT=$(git diff data/equipment_prices.json | grep -c '^+.*item_price' || echo "0")
-        CURRENT_TIME=$(date '+%Y-%m-%d %H:%M:%S JST')
-        
-        git add data/equipment_prices.json
+      run: >
+        git config --local user.email "action@github.com" &&
+        git config --local user.name "GitHub Action Bot" &&
+        UPDATED_COUNT=$(git diff data/equipment_prices.json | grep -c '^+.*item_price' || echo "0") &&
+        CURRENT_TIME=$(date '+%Y-%m-%d %H:%M:%S JST') &&
+        git add data/equipment_prices.json &&
         git commit -m "Auto-update equipment prices
 
-Update time: ${CURRENT_TIME}
-Updated items: ${UPDATED_COUNT}
-Automated by GitHub Actions"
-        
-        git push
-        
+        Update time: ${CURRENT_TIME}
+        Updated items: ${UPDATED_COUNT}
+        Automated by GitHub Actions" &&
+        git push &&
         echo "Updated ${UPDATED_COUNT} items and pushed to repository"
     
     - name: Generate summary
