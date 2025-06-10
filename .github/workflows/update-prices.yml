@@ -6,9 +6,14 @@ on:
   workflow_dispatch:
     inputs:
       target_items:
-        description: 'Number of items to update (default: 10)'
-        default: '10'
+        description: 'Number of items to update (default: ALL)'
+        default: 'ALL'
         type: string
+
+# 権限設定を追加
+permissions:
+  contents: write
+  actions: read
 
 env:
   TZ: Asia/Tokyo
@@ -16,13 +21,14 @@ env:
 jobs:
   update-prices:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 120  # 全件処理のため時間延長
     
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
+        fetch-depth: 0
     
     - name: Setup Python 3.11
       uses: actions/setup-python@v4
@@ -38,12 +44,6 @@ jobs:
         sudo sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list'
         sudo apt-get update
         sudo apt-get install -y google-chrome-stable
-        
-        CHROME_VERSION=$(google-chrome --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+')
-        echo "Chrome version: $CHROME_VERSION"
-        
-        CHROME_MAJOR_VERSION=$(echo $CHROME_VERSION | cut -d '.' -f 1)
-        echo "Chrome major version: $CHROME_MAJOR_VERSION"
         
         echo "Using simplified ChromeDriver download approach"
         CHROMEDRIVER_VERSION="136.0.7103.92"
@@ -78,7 +78,7 @@ jobs:
         python scripts/update_prices.py
         echo "Price update completed at $(date '+%Y-%m-%d %H:%M:%S JST')"
       env:
-        TARGET_ITEMS: ${{ github.event.inputs.target_items || '10' }}
+        TARGET_ITEMS: ${{ github.event.inputs.target_items || 'ALL' }}
         PYTHONPATH: ${{ github.workspace }}
     
     - name: Check for changes
@@ -108,7 +108,7 @@ jobs:
         Updated items: ${UPDATED_COUNT}
         Automated by GitHub Actions"
         
-        git push
+        git push origin ${{ github.ref_name }}
         
         echo "Updated ${UPDATED_COUNT} items and pushed to repository"
     
