@@ -477,14 +477,6 @@
             font-size: 12px;
         }
         
-        .debug-info {
-            background: #e9ecef;
-            color: #495057;
-            padding: 8px;
-            font-size: 11px;
-            border-top: 1px solid #dee2e6;
-        }
-        
         @media (max-width: 1200px) {
             .main-content {
                 margin-right: 0;
@@ -597,10 +589,6 @@
             </div>
             
             <div id="errorMessage" class="error" style="display: none;"></div>
-            
-            <div id="debugInfo" class="debug-info" style="display: none;">
-                デバッグ情報が表示されます
-            </div>
         </div>
         
         <!-- A/B選択対応サイドバー -->
@@ -636,7 +624,7 @@
     </div>
 
     <script>
-        // エラーハンドリング強化版MapleStory価格追跡システム
+        // MapleStory価格追跡システム
         class MapleStoryPriceTracker {
             constructor() {
                 this.rawData = {};
@@ -648,27 +636,12 @@
                 this.sortField = 'name';
                 this.sortDirection = 'asc';
                 this.currentTab = 'a';
-                this.debugMode = true; // デバッグモード有効
                 
                 this.init();
             }
             
-            // デバッグ用ログ出力
-            log(message, type = 'info') {
-                console.log(`[MapleStory-${type.toUpperCase()}] ${message}`);
-                if (this.debugMode) {
-                    const debugElement = document.getElementById('debugInfo');
-                    if (debugElement) {
-                        debugElement.style.display = 'block';
-                        debugElement.innerHTML += `<div>[${new Date().toLocaleTimeString()}] ${type.toUpperCase()}: ${message}</div>`;
-                        debugElement.scrollTop = debugElement.scrollHeight;
-                    }
-                }
-            }
-            
             async init() {
                 try {
-                    this.log('システム初期化開始');
                     this.showLoading(true);
                     await this.loadData();
                     this.setupEventListeners();
@@ -677,9 +650,7 @@
                     this.updateStats();
                     this.renderTable();
                     this.showLoading(false);
-                    this.log('システム初期化完了');
                 } catch (error) {
-                    this.log(`初期化エラー: ${error.message}`, 'error');
                     this.showError('システムの初期化に失敗しました: ' + error.message);
                 }
             }
@@ -691,33 +662,26 @@
                 if (cached && cacheTime && Date.now() - parseInt(cacheTime) < 1800000) {
                     try {
                         this.rawData = JSON.parse(cached);
-                        this.log(`キャッシュからデータを読み込み: ${Object.keys(this.rawData).length}件`);
                         return;
                     } catch (error) {
-                        this.log(`キャッシュ読み込みエラー: ${error.message}`, 'warn');
                         localStorage.removeItem('equipmentDataCache');
                         localStorage.removeItem('equipmentDataCacheTime');
                     }
                 }
                 
                 try {
-                    this.log('JSONファイルを取得中...');
                     const response = await fetch('./data/equipment_prices.json?v=' + Date.now());
                     if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                     
                     this.rawData = await response.json();
-                    this.log(`JSONファイル読み込み成功: ${Object.keys(this.rawData).length}件`);
                     
                     localStorage.setItem('equipmentDataCache', JSON.stringify(this.rawData));
                     localStorage.setItem('equipmentDataCacheTime', Date.now().toString());
                 } catch (error) {
-                    this.log(`JSONファイル読み込み失敗: ${error.message}`, 'warn');
-                    this.log('フォールバックデータを使用');
                     this.rawData = this.getFallbackData();
                 }
             }
             
-            // 拡充されたフォールバックデータ（paste.txtベース）
             getFallbackData() {
                 return {
                     "1382285": {
@@ -787,9 +751,8 @@
                     document.getElementById('setFilter').addEventListener('change', () => this.applyFilters());
                     document.getElementById('priceFilter').addEventListener('change', () => this.applyFilters());
                     document.getElementById('refreshBtn').addEventListener('click', () => this.refreshData());
-                    this.log('イベントリスナー設定完了');
                 } catch (error) {
-                    this.log(`イベントリスナー設定エラー: ${error.message}`, 'error');
+                    // エラー処理
                 }
             }
             
@@ -827,33 +790,26 @@
                                 }
                             }
                         } catch (itemError) {
-                            this.log(`アイテム処理エラー (${item?.item_id}): ${itemError.message}`, 'warn');
+                            // エラー処理
                         }
                     });
                     
-                    this.populateFilter('categoryFilter', categories, ' Category');
+                    this.populateFilter('categoryFilter', categories, '');
                     this.populateFilter('setFilter', setNames, ' Set');
-                    
-                    this.log(`フィルター生成完了: カテゴリ${categories.size}件, セット${setNames.size}件`);
                 } catch (error) {
-                    this.log(`フィルター生成エラー: ${error.message}`, 'error');
+                    // エラー処理
                 }
             }
             
             populateFilter(filterId, items, suffix = '') {
                 try {
                     const filter = document.getElementById(filterId);
-                    if (!filter) {
-                        this.log(`フィルター要素が見つかりません: ${filterId}`, 'warn');
-                        return;
-                    }
+                    if (!filter) return;
                     
-                    // 既存のオプションを削除（最初の「すべて」オプション以外）
                     while (filter.children.length > 1) {
                         filter.removeChild(filter.lastChild);
                     }
                     
-                    // 新しいオプションを追加
                     Array.from(items).sort().forEach(item => {
                         const option = document.createElement('option');
                         option.value = item;
@@ -861,7 +817,7 @@
                         filter.appendChild(option);
                     });
                 } catch (error) {
-                    this.log(`フィルター設定エラー (${filterId}): ${error.message}`, 'error');
+                    // エラー処理
                 }
             }
             
@@ -882,12 +838,11 @@
                     
                     return categoryMappings[category] || category;
                 } catch (error) {
-                    this.log(`カテゴリ名変換エラー: ${error.message}`, 'warn');
                     return category || 'Unknown';
                 }
             }
             
-            // エラーハンドリング強化版セット検出関数
+            // 修正されたセット検出関数（Royal Von LeonをChaos Abyssから除外）
             detectSetName(itemName) {
                 try {
                     if (!itemName || typeof itemName !== 'string') {
@@ -895,19 +850,21 @@
                     }
                     
                     const setPatterns = [
-                        // Chaos Abyss セットに統合
+                        // Chaos Abyss セットに統合（Royal Von Leonを除外）
                         /^(Eagle Eye)\s/i,
                         /^(Trixter)\s/i,
-                        /^(Royal)\s/i,
+                        /^(Royal)\s(?!Von Leon)/i, // Royal Von Leonを除外
                         /^(Fafnir)\s/i,
                         
                         // Necro セットに統合
                         /^(Necromancer)\s/i,
                         /^(Necro)\s/i,
                         
+                        // Royal Von Leonは独立したセット
+                        /^(Royal Von Leon)\s/i,
+                        
                         // その他のセット
                         /^(Unchained)\s/i,
-                        /^(Royal Von Leon)\s/i,
                         /^(Lionheart)\s/i,
                         /^(Dragon Tail)\s/i,
                         /^(Falcon Wing)\s/i,
@@ -923,7 +880,7 @@
                         if (match && match[1]) {
                             const setName = match[1];
                             
-                            // セット名の統合処理
+                            // セット名の統合処理（Royal Von Leon除外）
                             if (['Eagle Eye', 'Trixter', 'Royal', 'Fafnir'].includes(setName)) {
                                 return 'Chaos Abyss';
                             }
@@ -936,7 +893,6 @@
                     }
                     return null;
                 } catch (error) {
-                    this.log(`セット検出エラー (${itemName}): ${error.message}`, 'warn');
                     return null;
                 }
             }
@@ -947,7 +903,6 @@
                     if (typeof priceStr === 'number') return priceStr;
                     return parseInt(String(priceStr).replace(/[,]/g, '')) || 0;
                 } catch (error) {
-                    this.log(`価格解析エラー (${priceStr}): ${error.message}`, 'warn');
                     return 0;
                 }
             }
@@ -957,7 +912,6 @@
                     if (!price || price === 0) return '未取得';
                     return parseInt(price).toLocaleString() + ' NESO';
                 } catch (error) {
-                    this.log(`価格フォーマットエラー (${price}): ${error.message}`, 'warn');
                     return '未取得';
                 }
             }
@@ -977,7 +931,6 @@
                         return numPrice.toString();
                     }
                 } catch (error) {
-                    this.log(`短縮価格フォーマットエラー (${price}): ${error.message}`, 'warn');
                     return '未取得';
                 }
             }
@@ -1052,7 +1005,6 @@
                             
                             return true;
                         } catch (itemError) {
-                            this.log(`アイテムフィルターエラー (${item?.item_id}): ${itemError.message}`, 'warn');
                             return false;
                         }
                     });
@@ -1060,9 +1012,8 @@
                     this.currentPage = 1;
                     this.updateStats();
                     this.renderTable();
-                    this.log(`フィルター適用完了: ${this.filteredData.length}件表示`);
                 } catch (error) {
-                    this.log(`フィルター適用エラー: ${error.message}`, 'error');
+                    // エラー処理
                 }
             }
             
@@ -1116,15 +1067,13 @@
                                 return this.sortDirection === 'asc' ? aVal - bVal : bVal - aVal;
                             }
                         } catch (sortError) {
-                            this.log(`ソートエラー: ${sortError.message}`, 'warn');
                             return 0;
                         }
                     });
                     
                     this.renderTable();
-                    this.log(`ソート完了: ${field} (${this.sortDirection})`);
                 } catch (error) {
-                    this.log(`ソートエラー: ${error.message}`, 'error');
+                    // エラー処理
                 }
             }
             
@@ -1145,9 +1094,8 @@
                     document.getElementById('setCount').textContent = setCount.toLocaleString();
                     
                     this.displayLastUpdateTime();
-                    this.log(`統計更新完了: 総数${total}, 平均${avg}, 最高${max}, セット${setCount}`);
                 } catch (error) {
-                    this.log(`統計更新エラー: ${error.message}`, 'error');
+                    // エラー処理
                 }
             }
             
@@ -1164,7 +1112,7 @@
                                 }
                             }
                         } catch (timeError) {
-                            // 個別のアイテム時刻エラーは無視
+                            // エラー処理
                         }
                     });
                     
@@ -1183,7 +1131,6 @@
                         }
                     }
                 } catch (error) {
-                    this.log(`最終更新時刻表示エラー: ${error.message}`, 'warn');
                     try {
                         document.getElementById('updateTime').textContent = new Date().toLocaleTimeString('ja-JP');
                     } catch (fallbackError) {
@@ -1199,10 +1146,7 @@
                     const pageData = this.filteredData.slice(start, end);
                     
                     const tableBody = document.getElementById('tableBody');
-                    if (!tableBody) {
-                        this.log('テーブルボディ要素が見つかりません', 'error');
-                        return;
-                    }
+                    if (!tableBody) return;
                     
                     tableBody.innerHTML = '';
                     
@@ -1246,23 +1190,18 @@
                                 </td>
                             `;
                         } catch (rowError) {
-                            this.log(`行生成エラー (${item?.item_id}): ${rowError.message}`, 'warn');
+                            // エラー処理
                         }
                     });
-                    
-                    this.log(`テーブル描画完了: ${pageData.length}件表示`);
                 } catch (error) {
-                    this.log(`テーブル描画エラー: ${error.message}`, 'error');
+                    // エラー処理
                 }
             }
             
             toggleItem(itemId, set) {
                 try {
                     const item = this.rawData[itemId];
-                    if (!item) {
-                        this.log(`アイテムが見つかりません: ${itemId}`, 'warn');
-                        return;
-                    }
+                    if (!item) return;
                     
                     const selectedMap = set === 'a' ? this.selectedItemsA : this.selectedItemsB;
                     const otherMap = set === 'a' ? this.selectedItemsB : this.selectedItemsA;
@@ -1271,16 +1210,14 @@
                     
                     if (selectedMap.has(itemId)) {
                         selectedMap.delete(itemId);
-                        this.log(`セット${set.toUpperCase()}から削除: ${item.item_name}`);
                     } else {
                         selectedMap.set(itemId, item);
-                        this.log(`セット${set.toUpperCase()}に追加: ${item.item_name}`);
                     }
                     
                     this.updateSelectedItemsDisplay();
                     this.renderTable();
                 } catch (error) {
-                    this.log(`アイテム切り替えエラー: ${error.message}`, 'error');
+                    // エラー処理
                 }
             }
             
@@ -1290,17 +1227,14 @@
                     this.updateSetDisplay('b', this.selectedItemsB);
                     this.updateTotalPrices();
                 } catch (error) {
-                    this.log(`選択アイテム表示更新エラー: ${error.message}`, 'error');
+                    // エラー処理
                 }
             }
             
             updateSetDisplay(set, selectedMap) {
                 try {
                     const container = document.getElementById(`selection${set.toUpperCase()}`);
-                    if (!container) {
-                        this.log(`選択コンテナが見つかりません: selection${set.toUpperCase()}`, 'warn');
-                        return;
-                    }
+                    if (!container) return;
                     
                     container.innerHTML = '';
                     
@@ -1320,11 +1254,11 @@
                             `;
                             container.appendChild(itemDiv);
                         } catch (itemError) {
-                            this.log(`選択アイテム表示エラー (${itemId}): ${itemError.message}`, 'warn');
+                            // エラー処理
                         }
                     });
                 } catch (error) {
-                    this.log(`セット表示更新エラー (${set}): ${error.message}`, 'error');
+                    // エラー処理
                 }
             }
             
@@ -1341,19 +1275,17 @@
                     if (elementA) elementA.textContent = `セットA: ${this.formatPriceShort(totalA)} NESO`;
                     if (elementB) elementB.textContent = `セットB: ${this.formatPriceShort(totalB)} NESO`;
                 } catch (error) {
-                    this.log(`合計価格更新エラー: ${error.message}`, 'error');
+                    // エラー処理
                 }
             }
             
             async refreshData() {
                 try {
-                    this.log('データ更新開始');
                     localStorage.removeItem('equipmentDataCache');
                     localStorage.removeItem('equipmentDataCacheTime');
                     await this.init();
-                    this.log('データ更新完了');
                 } catch (error) {
-                    this.log(`データ更新エラー: ${error.message}`, 'error');
+                    // エラー処理
                 }
             }
             
@@ -1364,7 +1296,7 @@
                         element.style.display = show ? 'block' : 'none';
                     }
                 } catch (error) {
-                    this.log(`ローディング表示エラー: ${error.message}`, 'warn');
+                    // エラー処理
                 }
             }
             
@@ -1376,9 +1308,8 @@
                         errorDiv.style.display = 'block';
                     }
                     this.showLoading(false);
-                    this.log(`エラー表示: ${message}`, 'error');
                 } catch (error) {
-                    console.error('Error display failed:', error);
+                    // エラー処理
                 }
             }
         }
@@ -1486,7 +1417,7 @@
                 
                 comparisonSection.style.display = 'block';
             } catch (error) {
-                tracker.log(`比較エラー: ${error.message}`, 'error');
+                // エラー処理
             }
         }
         
@@ -1494,7 +1425,7 @@
         let tracker;
         document.addEventListener('DOMContentLoaded', function() {
             tracker = new MapleStoryPriceTracker();
-            window.tracker = tracker; // グローバルアクセス用
+            window.tracker = tracker;
         });
     </script>
 </body>
