@@ -8,14 +8,32 @@ from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
 import re
 from datetime import datetime
+import functools
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+def retry_on_error(max_retries=3, delay=2):
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            last_exception = None
+            for attempt in range(1, max_retries + 1):
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    last_exception = e
+                    if attempt < max_retries:
+                        logger.warning(f"Retry {attempt}/{max_retries}: {args[1] if len(args) > 1 else 'Unknown'}")
+                        time.sleep(delay)
+                    else:
+                        logger.error(f"Max retries reached: {args[1] if len(args) > 1 else 'Unknown'}")
+            raise last_exception
+        return wrapper
+    return decorator
 
 class GitHubActionsUpdater:
     def __init__(self, json_file_path="data/equipment_prices.json"):
@@ -24,10 +42,7 @@ class GitHubActionsUpdater:
         self.updated_count = 0
 
     def setup_driver(self):
-        """GitHub Actions用Chrome設定"""
         chrome_options = Options()
-        
-        # GitHub Actions必須設定
         chrome_options.add_argument("--headless=new")
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-dev-shm-usage")
@@ -36,36 +51,35 @@ class GitHubActionsUpdater:
         chrome_options.add_argument("--disable-extensions")
         chrome_options.add_argument("--disable-logging")
         chrome_options.add_argument("--log-level=3")
-        
-        # ボット検出回避
         chrome_options.add_argument("--disable-blink-features=AutomationControlled")
         chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
         chrome_options.add_experimental_option('useAutomationExtension', False)
         chrome_options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
         
-        # Chrome for Testing対応のService設定
         try:
             service = Service('/usr/local/bin/chromedriver')
+            service.log_path = os.devnull
             driver = webdriver.Chrome(service=service, options=chrome_options)
-            logger.info("✅ ChromeDriver initialized successfully")
+            logger.info("ChromeDriver initialized successfully")
         except Exception as e:
-            logger.error(f"❌ ChromeDriver initialization failed: {e}")
+            logger.error(f"ChromeDriver initialization failed: {e}")
             raise
 
         driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
         return driver
 
-    def safe_price_update(self, equipment_id, equipment_name):
-        """安全な価格更新"""
+    @retry_on_error(max_retries=3, delay=2)
+    def update_equipment_price_with_retry(self, equipment_id, equipment_name):
         driver = None
         try:
             driver = self.setup_driver()
             
-            # MSU Navigator接続
             driver.get("https://msu.io/navigator")
-            time.sleep(4)
-            
-            # 検索実行
+            WebDriverWait(driver, 15).until(
+                lambda d: d.execute_script("return document.readyState") == "complete"
+            )
+            time.sleep(3)
+
             search_success = driver.execute_script("""
                 let searchField = document.querySelector('#form_search_input') || 
                                 document.querySelector('input[type="text"]');
@@ -84,9 +98,8 @@ class GitHubActionsUpdater:
             if not search_success:
                 raise Exception("Search field not found")
 
-            time.sleep(5)
+            time.sleep(4)
 
-            # 価格要素取得
             price_elements = driver.find_elements(
                 By.CSS_SELECTOR,
                 "p._typography-point-body-m-medium_15szf_134._kartrider_3m7yu_9.NesoBox_text__lvOcl"
@@ -96,7 +109,7 @@ class GitHubActionsUpdater:
                 raise Exception("No price elements found")
 
             prices = []
-            for element in price_elements[:3]:
+            for element in price_elements[:5]:
                 try:
                     price_text = driver.execute_script(
                         "return arguments[0].textContent || '';", element
@@ -116,7 +129,7 @@ class GitHubActionsUpdater:
                 raise Exception("No valid prices found")
 
             optimal_price = min(prices)
-            logger.info(f"✅ {equipment_name}: {optimal_price:,} NESO")
+            logger.info(f"Success: {equipment_name}: {optimal_price:,} NESO")
             
             return {
                 'equipment_id': equipment_id,
@@ -126,7 +139,7 @@ class GitHubActionsUpdater:
             }
 
         except Exception as e:
-            logger.error(f"❌ {equipment_name}: {str(e)}")
+            logger.error(f"Failed: {equipment_name}: {str(e)}")
             return {
                 'equipment_id': equipment_id,
                 'equipment_name': equipment_name,
@@ -141,14 +154,13 @@ class GitHubActionsUpdater:
                     pass
 
     def run_update(self):
-        """価格更新実行"""
-        logger.info(f"🔄 GitHub Actions価格更新開始 - 対象: {self.target_items}件")
+        logger.info(f"GitHub Actions price update started - Target: {self.target_items} items")
         
         try:
             with open(self.json_file_path, 'r', encoding='utf-8') as f:
                 equipment_data = json.load(f)
         except Exception as e:
-            logger.error(f"❌ JSON読み込み失敗: {e}")
+            logger.error(f"JSON loading failed: {e}")
             sys.exit(1)
 
         items = [(k, v) for k, v in equipment_data.items() 
@@ -156,9 +168,9 @@ class GitHubActionsUpdater:
         
         for i, (equipment_id, equipment_info) in enumerate(items, 1):
             equipment_name = equipment_info.get("item_name", "")
-            logger.info(f"[{i}/{len(items)}] 処理中: {equipment_name}")
+            logger.info(f"[{i}/{len(items)}] Processing: {equipment_name}")
             
-            result = self.safe_price_update(equipment_id, equipment_name)
+            result = self.update_equipment_price_with_retry(equipment_id, equipment_name)
             
             if result.get('success'):
                 equipment_data[equipment_id]["item_price"] = f"{result['price']:,}"
@@ -167,17 +179,17 @@ class GitHubActionsUpdater:
             else:
                 equipment_data[equipment_id]["status"] = "価格取得失敗"
             
-            time.sleep(6)  # GitHub Actions制限対応
+            time.sleep(5)
 
         try:
             with open(self.json_file_path, 'w', encoding='utf-8') as f:
                 json.dump(equipment_data, f, ensure_ascii=False, indent=2)
-            logger.info(f"✅ JSON保存成功: {self.updated_count}件更新")
+            logger.info(f"JSON saved successfully: {self.updated_count} items updated")
         except Exception as e:
-            logger.error(f"❌ JSON保存失敗: {e}")
+            logger.error(f"Failed to save JSON: {e}")
             sys.exit(1)
 
-        logger.info(f"🎉 完了: {self.updated_count}/{len(items)}件成功")
+        logger.info(f"Update completed: {self.updated_count}/{len(items)} items successful")
         sys.exit(0)
 
 def main():
@@ -185,7 +197,7 @@ def main():
     try:
         updater.run_update()
     except Exception as e:
-        logger.error(f"💥 システムエラー: {e}")
+        logger.error(f"System error: {e}")
         sys.exit(1)
 
 if __name__ == "__main__":
