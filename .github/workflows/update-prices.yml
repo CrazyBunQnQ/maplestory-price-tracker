@@ -45,46 +45,20 @@ jobs:
         CHROME_MAJOR_VERSION=$(echo $CHROME_VERSION | cut -d '.' -f 1)
         echo "Chrome major version: $CHROME_MAJOR_VERSION"
         
-        CHROMEDRIVER_JSON_URL="https://googlechromelabs.github.io/chrome-for-testing/known-good-versions-with-downloads.json"
-        
-        cat > /tmp/get_chromedriver_version.py << 'EOF'
-import sys, json
-try:
-    data = json.load(sys.stdin)
-    versions = data.get('versions', [])
-    chrome_major = sys.argv[1] if len(sys.argv) > 1 else ''
-    latest_version = None
-    
-    for version in reversed(versions):
-        version_str = version.get('version', '')
-        if version_str.startswith(chrome_major + '.'):
-            downloads = version.get('downloads', {})
-            chromedriver_downloads = downloads.get('chromedriver', [])
-            for download in chromedriver_downloads:
-                if download.get('platform') == 'linux64':
-                    latest_version = version_str
-                    break
-            if latest_version:
-                break
-    
-    print(latest_version if latest_version else '')
-except Exception:
-    print('')
-EOF
-        
-        CHROMEDRIVER_VERSION=$(curl -s $CHROMEDRIVER_JSON_URL | python3 /tmp/get_chromedriver_version.py $CHROME_MAJOR_VERSION)
-        
-        if [ -z "$CHROMEDRIVER_VERSION" ]; then
-          echo "Compatible ChromeDriver not found, using fallback version"
-          CHROMEDRIVER_VERSION="136.0.7103.92"
-        fi
-        
+        echo "Using simplified ChromeDriver download approach"
+        CHROMEDRIVER_VERSION="136.0.7103.92"
         echo "Using ChromeDriver version: $CHROMEDRIVER_VERSION"
         
         CHROMEDRIVER_URL="https://storage.googleapis.com/chrome-for-testing-public/$CHROMEDRIVER_VERSION/linux64/chromedriver-linux64.zip"
         echo "Downloading from: $CHROMEDRIVER_URL"
         
-        wget -O /tmp/chromedriver.zip "$CHROMEDRIVER_URL"
+        wget -O /tmp/chromedriver.zip "$CHROMEDRIVER_URL" || {
+          echo "Download failed, trying alternative version"
+          CHROMEDRIVER_VERSION="135.0.7103.92"
+          CHROMEDRIVER_URL="https://storage.googleapis.com/chrome-for-testing-public/$CHROMEDRIVER_VERSION/linux64/chromedriver-linux64.zip"
+          wget -O /tmp/chromedriver.zip "$CHROMEDRIVER_URL"
+        }
+        
         sudo unzip /tmp/chromedriver.zip -d /tmp/
         sudo mv /tmp/chromedriver-linux64/chromedriver /usr/local/bin/
         sudo chmod +x /usr/local/bin/chromedriver
@@ -120,18 +94,22 @@ EOF
     
     - name: Commit and push changes
       if: steps.check-changes.outputs.changed == 'true'
-      run: >
-        git config --local user.email "action@github.com" &&
-        git config --local user.name "GitHub Action Bot" &&
-        UPDATED_COUNT=$(git diff data/equipment_prices.json | grep -c '^+.*item_price' || echo "0") &&
-        CURRENT_TIME=$(date '+%Y-%m-%d %H:%M:%S JST') &&
-        git add data/equipment_prices.json &&
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action Bot"
+        
+        UPDATED_COUNT=$(git diff data/equipment_prices.json | grep -c '^+.*item_price' || echo "0")
+        CURRENT_TIME=$(date '+%Y-%m-%d %H:%M:%S JST')
+        
+        git add data/equipment_prices.json
         git commit -m "Auto-update equipment prices
 
         Update time: ${CURRENT_TIME}
         Updated items: ${UPDATED_COUNT}
-        Automated by GitHub Actions" &&
-        git push &&
+        Automated by GitHub Actions"
+        
+        git push
+        
         echo "Updated ${UPDATED_COUNT} items and pushed to repository"
     
     - name: Generate summary
