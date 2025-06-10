@@ -17,6 +17,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 def retry_on_error(max_retries=3, delay=2):
+    """エラー時に指定回数リトライするデコレータ"""
     def decorator(func):
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
@@ -42,7 +43,9 @@ class GitHubActionsUpdater:
         self.updated_count = 0
 
     def setup_driver(self):
+        """Seleniumドライバーの設定（GitHub Actions対応）"""
         chrome_options = Options()
+        # GitHub Actions用設定
         chrome_options.add_argument("--headless=new")
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-dev-shm-usage")
@@ -51,10 +54,13 @@ class GitHubActionsUpdater:
         chrome_options.add_argument("--disable-extensions")
         chrome_options.add_argument("--disable-logging")
         chrome_options.add_argument("--log-level=3")
+        chrome_options.add_argument("--silent")
+        
+        # ボット検出回避設定（paste-3.txtより）
         chrome_options.add_argument("--disable-blink-features=AutomationControlled")
-        chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+        chrome_options.add_experimental_option("excludeSwitches", ["enable-automation", "enable-logging"])
         chrome_options.add_experimental_option('useAutomationExtension', False)
-        chrome_options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
+        chrome_options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36')
         
         try:
             service = Service('/usr/local/bin/chromedriver')
@@ -68,28 +74,41 @@ class GitHubActionsUpdater:
         driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
         return driver
 
-    @retry_on_error(max_retries=3, delay=2)
-    def update_equipment_price_with_retry(self, equipment_id, equipment_name):
-        driver = None
+    def search_equipment_js(self, driver, equipment_name):
+        """JavaScriptを使用した検索実行（paste-3.txtより）"""
         try:
-            driver = self.setup_driver()
-            
             driver.get("https://msu.io/navigator")
             WebDriverWait(driver, 15).until(
                 lambda d: d.execute_script("return document.readyState") == "complete"
             )
             time.sleep(3)
 
+            # paste-3.txtの検索ロジックを使用
             search_success = driver.execute_script("""
-                let searchField = document.querySelector('#form_search_input') || 
-                                document.querySelector('input[type="text"]');
+                let searchField = null;
+                const selectors = [
+                    '#form_search_input',
+                    'input[id="form_search_input"]',
+                    'input[type="text"]',
+                    'input[placeholder*="search"]',
+                    'input[placeholder*="Search"]'
+                ];
+                for (const selector of selectors) {
+                    searchField = document.querySelector(selector);
+                    if (searchField) break;
+                }
                 if (!searchField) return false;
                 
+                searchField.value = '';
+                searchField.focus();
                 searchField.value = arguments[0];
                 searchField.dispatchEvent(new Event('input', { bubbles: true }));
+                searchField.dispatchEvent(new Event('change', { bubbles: true }));
                 
                 const enterEvent = new KeyboardEvent('keydown', {
-                    key: 'Enter', keyCode: 13, bubbles: true
+                    key: 'Enter',
+                    keyCode: 13,
+                    bubbles: true
                 });
                 searchField.dispatchEvent(enterEvent);
                 return true;
@@ -99,44 +118,97 @@ class GitHubActionsUpdater:
                 raise Exception("Search field not found")
 
             time.sleep(4)
+            return True
 
+        except Exception as e:
+            raise Exception(f"検索エラー: {equipment_name}, {e}")
+
+    def extract_prices(self, driver):
+        """最新の価格情報5件を抽出（paste-3.txtより）"""
+        try:
             price_elements = driver.find_elements(
                 By.CSS_SELECTOR,
                 "p._typography-point-body-m-medium_15szf_134._kartrider_3m7yu_9.NesoBox_text__lvOcl"
             )
 
             if not price_elements:
-                raise Exception("No price elements found")
+                return []
 
             prices = []
+            # paste-3.txtのロジック：最新の5件のみを処理
             for element in price_elements[:5]:
                 try:
                     price_text = driver.execute_script(
-                        "return arguments[0].textContent || '';", element
+                        "return arguments[0].textContent || arguments[0].innerText || '';",
+                        element
                     ).strip()
-                    
-                    price_match = re.search(r'[\d,]+', price_text)
-                    if price_match:
-                        price_str = price_match.group().replace(',', '')
-                        if price_str.isdigit():
-                            price = int(price_str)
-                            if price > 100000:
+
+                    if price_text:
+                        price_match = re.search(r'[\d,]+', price_text)
+                        if price_match:
+                            price_str = price_match.group().replace(',', '')
+                            if price_str.isdigit():
+                                price = int(price_str)
                                 prices.append(price)
-                except:
+                except Exception:
                     continue
 
-            if not prices:
-                raise Exception("No valid prices found")
+            prices.sort()
+            logger.info(f"取得した最新5件の価格: {[f'{p:,}' for p in prices]}")
+            return prices
 
-            optimal_price = min(prices)
-            logger.info(f"Success: {equipment_name}: {optimal_price:,} NESO")
+        except Exception as e:
+            raise Exception(f"価格抽出エラー: {e}")
+
+    def select_optimal_price(self, prices):
+        """最新5件から100,000以下を除外し最安値を選定（paste-3.txtより）"""
+        if not prices:
+            return None
+
+        logger.info(f"取得した最新5件の価格: {[f'{p:,}' for p in prices]}")
+
+        # 100,000以下の価格を除外
+        filtered_prices = [price for price in prices if price > 100000]
+
+        if not filtered_prices:
+            logger.warning("全ての価格が100,000以下のため、元の価格を使用")
+            return prices[0] if prices else None
+        else:
+            excluded_count = len(prices) - len(filtered_prices)
+            if excluded_count > 0:
+                logger.info(f"100,000以下の価格を{excluded_count}件除外")
+
+        # 最安値を返す
+        optimal_price = filtered_prices[0]
+        logger.info(f"選定された最安値: {optimal_price:,}")
+        
+        return optimal_price
+
+    @retry_on_error(max_retries=3, delay=2)
+    def update_equipment_price_with_retry(self, equipment_id, equipment_name):
+        """特定の装備の価格を更新（paste-3.txtベース）"""
+        driver = None
+        try:
+            driver = self.setup_driver()
             
-            return {
-                'equipment_id': equipment_id,
-                'equipment_name': equipment_name,
-                'price': optimal_price,
-                'success': True
-            }
+            if not self.search_equipment_js(driver, equipment_name):
+                raise Exception("検索失敗")
+
+            prices = self.extract_prices(driver)
+            if not prices:
+                raise Exception("価格が見つかりません")
+
+            optimal_price = self.select_optimal_price(prices)
+            if optimal_price:
+                logger.info(f"Success: {equipment_name}: {optimal_price:,} NESO")
+                return {
+                    'equipment_id': equipment_id,
+                    'equipment_name': equipment_name,
+                    'price': optimal_price,
+                    'success': True
+                }
+            else:
+                raise Exception("適切な価格が選定できません")
 
         except Exception as e:
             logger.error(f"Failed: {equipment_name}: {str(e)}")
@@ -154,6 +226,7 @@ class GitHubActionsUpdater:
                     pass
 
     def run_update(self):
+        """価格更新実行（GitHub Actions用シンプル版）"""
         logger.info(f"GitHub Actions price update started - Target: {self.target_items} items")
         
         try:
@@ -179,6 +252,7 @@ class GitHubActionsUpdater:
             else:
                 equipment_data[equipment_id]["status"] = "価格取得失敗"
             
+            # GitHub Actions制限対応
             time.sleep(5)
 
         try:
