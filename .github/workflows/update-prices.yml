@@ -43,43 +43,51 @@ jobs:
         echo "Chrome version: $CHROME_VERSION"
         
         CHROME_MAJOR_VERSION=$(echo $CHROME_VERSION | cut -d '.' -f 1)
+        echo "Chrome major version: $CHROME_MAJOR_VERSION"
         
         CHROMEDRIVER_JSON_URL="https://googlechromelabs.github.io/chrome-for-testing/known-good-versions-with-downloads.json"
         
         CHROMEDRIVER_VERSION=$(curl -s $CHROMEDRIVER_JSON_URL | python3 -c "
 import sys, json
-data = json.load(sys.stdin)
-versions = data['versions']
-chrome_major = '$CHROME_MAJOR_VERSION'
-latest_version = None
-for version in reversed(versions):
-    if version['version'].startswith(chrome_major + '.') and 'chromedriver' in version['downloads']:
-        for download in version['downloads']['chromedriver']:
-            if download['platform'] == 'linux64':
-                latest_version = version['version']
+try:
+    data = json.load(sys.stdin)
+    versions = data.get('versions', [])
+    chrome_major = '$CHROME_MAJOR_VERSION'
+    latest_version = None
+    
+    for version in reversed(versions):
+        version_str = version.get('version', '')
+        if version_str.startswith(chrome_major + '.'):
+            downloads = version.get('downloads', {})
+            chromedriver_downloads = downloads.get('chromedriver', [])
+            for download in chromedriver_downloads:
+                if download.get('platform') == 'linux64':
+                    latest_version = version_str
+                    break
+            if latest_version:
                 break
-        if latest_version:
-            break
-print(latest_version if latest_version else '')
+    
+    print(latest_version if latest_version else '')
+except Exception:
+    print('')
 ")
         
         if [ -z "$CHROMEDRIVER_VERSION" ]; then
-          echo "Compatible ChromeDriver not found, using fallback"
+          echo "Compatible ChromeDriver not found, using fallback version"
           CHROMEDRIVER_VERSION="136.0.7103.92"
         fi
         
         echo "Using ChromeDriver version: $CHROMEDRIVER_VERSION"
         
         CHROMEDRIVER_URL="https://storage.googleapis.com/chrome-for-testing-public/$CHROMEDRIVER_VERSION/linux64/chromedriver-linux64.zip"
-        
         echo "Downloading from: $CHROMEDRIVER_URL"
-        wget -O /tmp/chromedriver.zip "$CHROMEDRIVER_URL"
         
+        wget -O /tmp/chromedriver.zip "$CHROMEDRIVER_URL"
         sudo unzip /tmp/chromedriver.zip -d /tmp/
         sudo mv /tmp/chromedriver-linux64/chromedriver /usr/local/bin/
         sudo chmod +x /usr/local/bin/chromedriver
         
-        echo "Installed versions:"
+        echo "Installation completed:"
         google-chrome --version
         chromedriver --version
     
@@ -119,10 +127,10 @@ print(latest_version if latest_version else '')
         
         git add data/equipment_prices.json
         git commit -m "Auto-update equipment prices
-        
-        Update time: ${CURRENT_TIME}
-        Updated items: ${UPDATED_COUNT}
-        Automated by GitHub Actions"
+
+Update time: ${CURRENT_TIME}
+Updated items: ${UPDATED_COUNT}
+Automated by GitHub Actions"
         
         git push
         
