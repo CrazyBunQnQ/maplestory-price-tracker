@@ -814,7 +814,7 @@
     "image_url": "https://api-static.msu.io/itemimages/icon/1322277.png",
     "item_id": "1322277",
     "item_price": "700,000",
-    "status": "価格更新済み",
+    "status": "価格取得失敗",
     "categories": [
       "Weapon",
       "One-handed Weapon",
@@ -1065,7 +1065,7 @@
     "item_name": "Unchained Bow",
     "image_url": "https://api-static.msu.io/itemimages/icon/1452283.png",
     "item_id": "1452283",
-    "item_price": "1,120,000",
+    "item_price": "1,100,000",
     "status": "価格更新済み",
     "categories": [
       "Weapon",
@@ -1228,7 +1228,7 @@
     "image_url": "https://api-static.msu.io/itemimages/icon/1452163.png",
     "item_id": "1452163",
     "item_price": "799,555",
-    "status": "価格更新済み",
+    "status": "価格取得失敗",
     "categories": [
       "Weapon",
       "Two-handed Weapon",
@@ -1552,7 +1552,7 @@
     "image_url": "https://api-static.msu.io/itemimages/icon/1492257.png",
     "item_id": "1492257",
     "item_price": "5,400,000",
-    "status": "価格更新済み",
+    "status": "価格取得失敗",
     "categories": [
       "Weapon",
       "Two-handed Weapon",
@@ -1605,8 +1605,8 @@
     "item_name": "Royal Von Leon Claw",
     "image_url": "https://api-static.msu.io/itemimages/icon/1482203.png",
     "item_id": "1482203",
-    "item_price": "740,000",
-    "status": "価格取得失敗",
+    "item_price": "699,999",
+    "status": "価格更新済み",
     "categories": [
       "Weapon",
       "Two-handed Weapon",
@@ -1659,7 +1659,7 @@
     "item_name": "Falcon Eye",
     "image_url": "https://api-static.msu.io/itemimages/icon/1352912.png",
     "item_id": "1352912",
-    "item_price": "5,761,111",
+    "item_price": "5,787,777",
     "status": "価格更新済み",
     "categories": [
       "Weapon",
@@ -1786,7 +1786,7 @@
     "image_url": "https://api-static.msu.io/itemimages/icon/1003797.png",
     "item_id": "1003797",
     "item_price": "29,000,000",
-    "status": "価格更新済み",
+    "status": "価格取得失敗",
     "categories": [
       "Armor",
       "Armor",
@@ -1857,7 +1857,7 @@
     "item_name": "Royal Von Leon Warrior Hands",
     "image_url": "https://api-static.msu.io/itemimages/icon/1082613.png",
     "item_id": "1082613",
-    "item_price": "1,024,999",
+    "item_price": "988,888",
     "status": "価格更新済み",
     "categories": [
       "Armor",
@@ -1875,7 +1875,7 @@
     "item_name": "Lionheart Battle Helm",
     "image_url": "https://api-static.msu.io/itemimages/icon/1003172.png",
     "item_id": "1003172",
-    "item_price": "1,700,000",
+    "item_price": "1,980,000",
     "status": "価格更新済み",
     "categories": [
       "Armor",
@@ -2019,7 +2019,7 @@
     "item_name": "Dragon Tail Mage Sallet",
     "image_url": "https://api-static.msu.io/itemimages/icon/1003173.png",
     "item_id": "1003173",
-    "item_price": "1,600,000",
+    "item_price": "1,690,000",
     "status": "価格更新済み",
     "categories": [
       "Armor",
@@ -2217,7 +2217,7 @@
     "item_name": "Unchained Mage Hands",
     "image_url": "https://api-static.msu.io/itemimages/icon/1082806.png",
     "item_id": "1082806",
-    "item_price": "1,480,000",
+    "item_price": "1,499,999",
     "status": "価格更新済み",
     "categories": [
       "Armor",
@@ -2254,7 +2254,7 @@
     "image_url": "https://api-static.msu.io/itemimages/icon/1052805.png",
     "item_id": "1052805",
     "item_price": "939,999",
-    "status": "価格取得失敗",
+    "status": "価格更新済み",
     "categories": [
       "Armor",
       "Armor",
@@ -2271,7 +2271,7 @@
     "item_name": "Royal Von Leon Magician Helm",
     "image_url": "https://api-static.msu.io/itemimages/icon/1004235.png",
     "item_id": "1004235",
-    "item_price": "829,999",
+    "item_price": "700,000",
     "status": "価格更新済み",
     "categories": [
       "Armor",
@@ -2307,7 +2307,7 @@
     "item_name": "Royal Von Leon Mage Cape",
     "image_url": "https://api-static.msu.io/itemimages/icon/1102714.png",
     "item_id": "1102714",
-    "item_price": "900,000",
+    "item_price": "939,999",
     "status": "価格更新済み",
     "categories": [
       "Armor",
@@ -2325,7 +2325,7 @@
     "item_name": "Royal Von Leon Mage Hands",
     "image_url": "https://api-static.msu.io/itemimages/icon/1082614.png",
     "item_id": "1082614",
-    "item_price": "870,000",
+    "item_price": "877,777",
     "status": "価格更新済み",
     "categories": [
       "Armor",
@@ -2433,7 +2433,7 @@
     "item_name": "Necromancer Magician Gloves",
     "image_url": "https://api-static.msu.io/itemimages/icon/1082594.png",
     "item_id": "1082594",
-    "item_price": "600,000",
+    "item_price": "977,766",
     "status": "価格更新済み",
     "categories": [
       "Armor",
@@ -2631,7 +2631,7 @@
     "item_name": "Royal Von Leon Chaser Boots",
     "image_url": "https://api-static.msu.io/itemimages/icon/1072975.png",
     "item_id": "1072975",
-    "item_price": "680,000",
+    "item_price": "638,888",
     "status": "価格更新済み",
     "categories": [
       "Armor",
@@ -2685,7 +2685,7 @@
     "item_name": "Royal Von Leon Chaser Helm",
     "image_url": "https://api-static.msu.io/itemimages/icon/1004237.png",
     "item_id": "1004237",
-    "item_price": "632,222",
+    "item_price": "640,000",
     "status": "価格更新済み",
     "categories": [
       "Armor",
@@ -2848,7 +2848,7 @@
     "image_url": "https://api-static.msu.io/itemimages/icon/1102278.png",
     "item_id": "1102278",
     "item_price": "1,800,000",
-    "status": "価格取得失敗",
+    "status": "価格更新済み",
     "categories": [
       "Armor",
       "Armor",
@@ -2991,7 +2991,7 @@
     "item_name": "Royal Von Leon Skipper Hands",
     "image_url": "https://api-static.msu.io/itemimages/icon/1082617.png",
     "item_id": "1082617",
-    "item_price": "900,000",
+    "item_price": "922,222",
     "status": "価格更新済み",
     "categories": [
       "Armor",
@@ -3027,7 +3027,7 @@
     "item_name": "Royal Von Leon Skipper Cape",
     "image_url": "https://api-static.msu.io/itemimages/icon/1102717.png",
     "item_id": "1102717",
-    "item_price": "999,990",
+    "item_price": "969,999",
     "status": "価格更新済み",
     "categories": [
       "Armor",
@@ -3437,7 +3437,7 @@
     "item_name": "Condensed Power Crystal",
     "image_url": "https://api-static.msu.io/itemimages/icon/1012478.png",
     "item_id": "1012478",
-    "item_price": "3,299,999",
+    "item_price": "2,800,000",
     "status": "価格更新済み",
     "categories": [
       "Armor",
@@ -3569,7 +3569,7 @@
     "item_name": "Will o' the Wisps",
     "image_url": "https://api-static.msu.io/itemimages/icon/1032136.png",
     "item_id": "1032136",
-    "item_price": "1,399,999",
+    "item_price": "1,444,444",
     "status": "価格更新済み",
     "categories": [
       "Armor",
@@ -3591,7 +3591,7 @@
     "item_name": "Ifia's Ring",
     "image_url": "https://api-static.msu.io/itemimages/icon/1113089.png",
     "item_id": "1113089",
-    "item_price": "699,999",
+    "item_price": "699,000",
     "status": "価格更新済み",
     "categories": [
       "Armor",
@@ -3613,7 +3613,7 @@
     "item_name": "Silver Blossom Ring",
     "image_url": "https://api-static.msu.io/itemimages/icon/1113149.png",
     "item_id": "1113149",
-    "item_price": "1,570,000",
+    "item_price": "1,559,999",
     "status": "価格更新済み",
     "categories": [
       "Armor",
@@ -3833,7 +3833,7 @@
     "item_name": "Golden Clover Belt",
     "image_url": "https://api-static.msu.io/itemimages/icon/1132272.png",
     "item_id": "1132272",
-    "item_price": "2,288,888",
+    "item_price": "2,349,999",
     "status": "価格更新済み",
     "categories": [
       "Armor",
@@ -3855,7 +3855,7 @@
     "item_name": "Neophyte Shoulders",
     "image_url": "https://api-static.msu.io/itemimages/icon/1152223.png",
     "item_id": "1152223",
-    "item_price": "1,850,000",
+    "item_price": "2,222,222",
     "status": "価格更新済み",
     "categories": [
       "Armor",
@@ -3899,7 +3899,7 @@
     "item_name": "Stone of Eternal Life",
     "image_url": "https://api-static.msu.io/itemimages/icon/1162009.png",
     "item_id": "1162009",
-    "item_price": "738,888",
+    "item_price": "739,999",
     "status": "価格更新済み",
     "categories": [
       "Armor",
@@ -3921,7 +3921,7 @@
     "item_name": "Pink Holy Cup",
     "image_url": "https://api-static.msu.io/itemimages/icon/1162025.png",
     "item_id": "1162025",
-    "item_price": "3,099,999",
+    "item_price": "3,100,000",
     "status": "価格更新済み",
     "categories": [
       "Armor",
@@ -4097,7 +4097,7 @@
     "item_name": "Seven Days Badge",
     "image_url": "https://api-static.msu.io/itemimages/icon/1182200.png",
     "item_id": "1182200",
-    "item_price": "16,000,000",
+    "item_price": "18,500,000",
     "status": "価格更新済み",
     "categories": [
       "Armor",
@@ -4142,7 +4142,7 @@
     "image_url": "https://api-static.msu.io/itemimages/icon/1190301.png",
     "item_id": "1190301",
     "item_price": "14,249,999",
-    "status": "価格更新済み",
+    "status": "価格取得失敗",
     "categories": [
       "Armor",
       "Accessory",
@@ -4222,7 +4222,7 @@
     "image_url": "https://api-static.msu.io/itemimages/icon/1322233.png",
     "item_id": "1322233",
     "item_price": "200,000",
-    "status": "価格更新済み",
+    "status": "価格取得失敗",
     "categories": [
       "Weapon",
       "One-handed Weapon",
@@ -4257,7 +4257,7 @@
     "item_name": "Zakum's Poisonic Two-handed Axe",
     "image_url": "https://api-static.msu.io/itemimages/icon/1412161.png",
     "item_id": "1412161",
-    "item_price": "177,777",
+    "item_price": "198,000",
     "status": "価格更新済み",
     "categories": [
       "Weapon",
@@ -4474,7 +4474,7 @@
     "image_url": "https://api-static.msu.io/itemimages/icon/1402095.png",
     "item_id": "1402095",
     "item_price": "2,000,000",
-    "status": "価格更新済み",
+    "status": "価格取得失敗",
     "categories": [
       "Weapon",
       "Two-handed Weapon",
@@ -4653,7 +4653,7 @@
     "item_name": "Royal Von Leon Sentinel Boots",
     "image_url": "https://api-static.msu.io/itemimages/icon/1072974.png",
     "item_id": "1072974",
-    "item_price": "490,000",
+    "item_price": "497,000",
     "status": "価格更新済み",
     "categories": [
       "Armor",
@@ -4671,7 +4671,7 @@
     "item_name": "Royal Von Leon Sentinel Cape",
     "image_url": "https://api-static.msu.io/itemimages/icon/1102715.png",
     "item_id": "1102715",
-    "item_price": "580,000",
+    "item_price": "590,000",
     "status": "価格更新済み",
     "categories": [
       "Armor",
@@ -4798,7 +4798,7 @@
     "image_url": "https://api-static.msu.io/itemimages/icon/1082297.png",
     "item_id": "1082297",
     "item_price": "800,000",
-    "status": "価格取得失敗",
+    "status": "価格更新済み",
     "categories": [
       "Armor",
       "Armor",
@@ -4852,7 +4852,7 @@
     "image_url": "https://api-static.msu.io/itemimages/icon/1082299.png",
     "item_id": "1082299",
     "item_price": "2,110,000",
-    "status": "価格取得失敗",
+    "status": "価格更新済み",
     "categories": [
       "Armor",
       "Armor",
