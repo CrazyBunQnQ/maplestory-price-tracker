@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MapleStory装備価格一覧 - 30分毎価格追跡システム</title>
-    <!-- Chart.js CDN（必須） -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Chart.js CDN（非同期読み込み） -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js" async></script>
     <style>
         * {
             margin: 0;
@@ -288,7 +288,7 @@
             color: white;
         }
         
-        /* Chart.js関連スタイル（追加） */
+        /* Chart.js関連スタイル（Chart.js利用時のみ） */
         .price-chart-tooltip {
             position: absolute;
             background: white;
@@ -301,85 +301,6 @@
             width: 300px;
             height: 200px;
             pointer-events: none;
-        }
-        
-        .chart-interval-tabs {
-            display: flex;
-            margin-bottom: 10px;
-            border-bottom: 1px solid #eee;
-        }
-        
-        .chart-interval-tab {
-            padding: 5px 10px;
-            cursor: pointer;
-            border: none;
-            background: none;
-            font-size: 11px;
-            color: #666;
-            transition: all 0.3s ease;
-            pointer-events: auto;
-        }
-        
-        .chart-interval-tab:hover {
-            background: #f8f9fa;
-        }
-        
-        .chart-interval-tab.active {
-            background: #2c3e50;
-            color: white;
-            border-radius: 3px;
-        }
-        
-        .comparison-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.8);
-            z-index: 2000;
-            display: none;
-        }
-        
-        .comparison-chart-container {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: white;
-            padding: 20px;
-            border-radius: 10px;
-            width: 800px;
-            height: 500px;
-            max-width: 90vw;
-            max-height: 90vh;
-        }
-        
-        .comparison-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 15px;
-        }
-        
-        .comparison-header h3 {
-            margin: 0;
-            color: #2c3e50;
-        }
-        
-        .close-btn {
-            background: #dc3545;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            padding: 5px 10px;
-            cursor: pointer;
-            font-size: 18px;
-            line-height: 1;
-        }
-        
-        .close-btn:hover {
-            background: #c82333;
         }
         
         /* サイドバー */
@@ -601,17 +522,6 @@
             .stats {
                 grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
             }
-            
-            .price-chart-tooltip {
-                width: 250px;
-                height: 150px;
-            }
-            
-            .comparison-chart-container {
-                width: 95vw;
-                height: 80vh;
-                padding: 15px;
-            }
         }
     </style>
 </head>
@@ -620,11 +530,11 @@
         <div class="main-content">
             <div class="header">
                 <h1>🍁 MapleStory装備価格一覧</h1>
-                <p>30分毎価格追跡システム - 装備アイテム価格情報 📈 価格チャート対応</p>
+                <p>30分毎価格追跡システム - 装備アイテム価格情報</p>
             </div>
             
             <div class="price-update-notice">
-                ⚠️ 価格は30分毎に更新されます（リアルタイム価格ではありません）📊 アイテム画像にホバーで価格チャート表示
+                ⚠️ 価格は30分毎に更新されます（リアルタイム価格ではありません）
             </div>
             
             <div class="stats" id="stats">
@@ -681,7 +591,7 @@
                 <table id="equipmentTable">
                     <thead>
                         <tr>
-                            <th onclick="sortTable('image')">📊 画像</th>
+                            <th onclick="sortTable('image')">画像</th>
                             <th onclick="sortTable('name')">アイテム名 ↕</th>
                             <th onclick="sortTable('price')">価格 ↕</th>
                             <th onclick="sortTable('category')">カテゴリ ↕</th>
@@ -727,7 +637,7 @@
                 <div class="total-price" id="totalPriceB">セットB: 0 NESO</div>
                 <button class="control-btn clear-btn" onclick="clearSet('a')">セットAクリア</button>
                 <button class="control-btn clear-btn" onclick="clearSet('b')">セットBクリア</button>
-                <button class="control-btn compare-btn" onclick="compareAllSets()">📈 詳細比較チャート</button>
+                <button class="control-btn compare-btn" onclick="compareAllSets()">詳細比較</button>
                 <div class="comparison-section" id="comparisonSection" style="display: none;">
                     <div class="comparison-title">🆚 セット比較結果</div>
                     <div id="comparisonList"></div>
@@ -737,7 +647,7 @@
     </div>
 
     <script>
-        // MapleStory価格追跡システム（安定版）
+        // データ反映保証版MapleStory価格追跡システム
         class MapleStoryPriceTracker {
             constructor() {
                 this.rawData = {};
@@ -749,13 +659,20 @@
                 this.sortField = 'name';
                 this.sortDirection = 'asc';
                 this.currentTab = 'a';
+                this.initRetryCount = 0;
+                this.maxRetries = 3;
                 
                 this.init();
             }
             
             async init() {
                 try {
+                    console.log(`MapleStory初期化開始 (試行 ${this.initRetryCount + 1}/${this.maxRetries})`);
                     this.showLoading(true);
+                    
+                    // キャッシュを強制クリア
+                    this.clearAllCaches();
+                    
                     await this.loadData();
                     this.setupEventListeners();
                     this.generateFilters();
@@ -763,34 +680,93 @@
                     this.updateStats();
                     this.renderTable();
                     this.showLoading(false);
+                    
+                    console.log('MapleStory初期化完了');
                 } catch (error) {
-                    this.showError('システムの初期化に失敗しました: ' + error.message);
+                    console.error('初期化エラー:', error);
+                    this.initRetryCount++;
+                    
+                    if (this.initRetryCount < this.maxRetries) {
+                        console.log(`${this.initRetryCount + 1}秒後に再試行します...`);
+                        setTimeout(() => this.init(), (this.initRetryCount + 1) * 1000);
+                    } else {
+                        this.showError('システムの初期化に失敗しました。ページを更新してください。');
+                    }
+                }
+            }
+            
+            // 強化されたキャッシュクリア機能
+            clearAllCaches() {
+                try {
+                    // localStorage/sessionStorageクリア
+                    localStorage.removeItem('equipmentDataCache');
+                    localStorage.removeItem('equipmentDataCacheTime');
+                    sessionStorage.clear();
+                    
+                    console.log('キャッシュクリア完了');
+                } catch (error) {
+                    console.warn('キャッシュクリアエラー:', error);
                 }
             }
             
             async loadData() {
-                const cached = localStorage.getItem('equipmentDataCache');
-                const cacheTime = localStorage.getItem('equipmentDataCacheTime');
+                // キャッシュを無視して強制的に最新データを取得
+                const cacheBuster = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                const url = `./data/equipment_prices.json?v=${cacheBuster}&nocache=true`;
                 
-                if (cached && cacheTime && Date.now() - parseInt(cacheTime) < 1800000) {
-                    try {
-                        this.rawData = JSON.parse(cached);
-                        return;
-                    } catch (error) {
-                        localStorage.removeItem('equipmentDataCache');
-                        localStorage.removeItem('equipmentDataCacheTime');
-                    }
-                }
+                console.log('JSONデータ取得開始:', url);
                 
                 try {
-                    const response = await fetch('./data/equipment_prices.json?v=' + Date.now());
-                    if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    const response = await fetch(url, {
+                        method: 'GET',
+                        cache: 'no-cache',
+                        headers: {
+                            'Cache-Control': 'no-cache, no-store, must-revalidate',
+                            'Pragma': 'no-cache',
+                            'Expires': '0'
+                        }
+                    });
                     
-                    this.rawData = await response.json();
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
                     
+                    const responseText = await response.text();
+                    
+                    if (!responseText || responseText.trim() === '') {
+                        throw new Error('JSONレスポンスが空です');
+                    }
+                    
+                    this.rawData = JSON.parse(responseText);
+                    
+                    if (!this.rawData || typeof this.rawData !== 'object') {
+                        throw new Error('不正なJSONデータ形式');
+                    }
+                    
+                    const itemCount = Object.keys(this.rawData).length;
+                    console.log(`JSONデータ読み込み成功: ${itemCount}件のアイテム`);
+                    
+                    if (itemCount === 0) {
+                        throw new Error('JSONデータにアイテムが含まれていません');
+                    }
+                    
+                    // 成功時のみキャッシュに保存
                     localStorage.setItem('equipmentDataCache', JSON.stringify(this.rawData));
                     localStorage.setItem('equipmentDataCacheTime', Date.now().toString());
+                    
                 } catch (error) {
+                    console.error('JSONファイル読み込みエラー:', error);
+                    
+                    // フォールバック1: キャッシュから読み込み
+                    const cached = localStorage.getItem('equipmentDataCache');
+                    if (cached) {
+                        console.log('キャッシュからフォールバック読み込み');
+                        this.rawData = JSON.parse(cached);
+                        return;
+                    }
+                    
+                    // フォールバック2: デフォルトデータ
+                    console.log('デフォルトデータを使用');
                     this.rawData = this.getFallbackData();
                 }
             }
@@ -864,8 +840,10 @@
                     document.getElementById('setFilter').addEventListener('change', () => this.applyFilters());
                     document.getElementById('priceFilter').addEventListener('change', () => this.applyFilters());
                     document.getElementById('refreshBtn').addEventListener('click', () => this.refreshData());
+                    
+                    console.log('イベントリスナー設定完了');
                 } catch (error) {
-                    // エラー処理
+                    console.error('イベントリスナー設定エラー:', error);
                 }
             }
             
@@ -886,6 +864,8 @@
                     const categories = new Set();
                     const setNames = new Set();
                     
+                    console.log('フィルター生成開始:', Object.keys(this.rawData).length, 'アイテム');
+                    
                     Object.values(this.rawData).forEach(item => {
                         try {
                             if (item && item.categories && Array.isArray(item.categories) && item.categories.length > 0) {
@@ -903,21 +883,26 @@
                                 }
                             }
                         } catch (itemError) {
-                            // エラー処理
+                            console.warn('アイテム処理エラー:', item?.item_id, itemError);
                         }
                     });
                     
                     this.populateFilter('categoryFilter', categories, '');
                     this.populateFilter('setFilter', setNames, ' Set');
+                    
+                    console.log(`フィルター生成完了: カテゴリ${categories.size}件, セット${setNames.size}件`);
                 } catch (error) {
-                    // エラー処理
+                    console.error('フィルター生成エラー:', error);
                 }
             }
             
             populateFilter(filterId, items, suffix = '') {
                 try {
                     const filter = document.getElementById(filterId);
-                    if (!filter) return;
+                    if (!filter) {
+                        console.warn(`フィルター要素が見つかりません: ${filterId}`);
+                        return;
+                    }
                     
                     while (filter.children.length > 1) {
                         filter.removeChild(filter.lastChild);
@@ -930,7 +915,7 @@
                         filter.appendChild(option);
                     });
                 } catch (error) {
-                    // エラー処理
+                    console.error(`フィルター設定エラー (${filterId}):`, error);
                 }
             }
             
@@ -1067,6 +1052,8 @@
                     const set = document.getElementById('setFilter')?.value || '';
                     const priceRange = document.getElementById('priceFilter')?.value || '';
                     
+                    console.log('フィルター適用開始:', Object.keys(this.rawData).length, 'アイテム');
+                    
                     this.filteredData = Object.values(this.rawData).filter(item => {
                         try {
                             if (!item || !item.item_name || typeof item.item_name !== 'string' || item.item_name.trim() === '') {
@@ -1118,6 +1105,7 @@
                             
                             return true;
                         } catch (itemError) {
+                            console.warn('アイテムフィルタリングエラー:', item?.item_id, itemError);
                             return false;
                         }
                     });
@@ -1125,8 +1113,10 @@
                     this.currentPage = 1;
                     this.updateStats();
                     this.renderTable();
+                    
+                    console.log(`フィルター適用完了: ${this.filteredData.length}件表示`);
                 } catch (error) {
-                    // エラー処理
+                    console.error('フィルター適用エラー:', error);
                 }
             }
             
@@ -1186,7 +1176,7 @@
                     
                     this.renderTable();
                 } catch (error) {
-                    // エラー処理
+                    console.error('ソートエラー:', error);
                 }
             }
             
@@ -1207,8 +1197,10 @@
                     document.getElementById('setCount').textContent = setCount.toLocaleString();
                     
                     this.displayLastUpdateTime();
+                    
+                    console.log(`統計更新: 総数${total}, 平均${avg}, 最高${max}, セット${setCount}`);
                 } catch (error) {
-                    // エラー処理
+                    console.error('統計更新エラー:', error);
                 }
             }
             
@@ -1225,7 +1217,7 @@
                                 }
                             }
                         } catch (timeError) {
-                            // エラー処理
+                            // 個別のエラーは無視
                         }
                     });
                     
@@ -1259,9 +1251,14 @@
                     const pageData = this.filteredData.slice(start, end);
                     
                     const tableBody = document.getElementById('tableBody');
-                    if (!tableBody) return;
+                    if (!tableBody) {
+                        console.error('テーブルボディ要素が見つかりません');
+                        return;
+                    }
                     
                     tableBody.innerHTML = '';
+                    
+                    console.log(`テーブル描画: ${pageData.length}件`);
                     
                     pageData.forEach(item => {
                         try {
@@ -1288,7 +1285,7 @@
                             const row = tableBody.insertRow();
                             row.className = rowClass;
                             row.innerHTML = `
-                                <td><img src="${item.image_url || ''}" alt="${item.item_name}" class="item-image" loading="lazy" onerror="this.style.display='none'" data-item-id="${item.item_id}"></td>
+                                <td><img src="${item.image_url || ''}" alt="${item.item_name}" class="item-image" loading="lazy" onerror="this.style.display='none'"></td>
                                 <td class="item-name">${item.item_name}${setBadge}</td>
                                 <td class="price ${this.getPriceClass(price)}">${this.formatPrice(price)}</td>
                                 <td>${categoryDisplay}</td>
@@ -1303,18 +1300,21 @@
                                 </td>
                             `;
                         } catch (rowError) {
-                            // エラー処理
+                            console.warn('行生成エラー:', item?.item_id, rowError);
                         }
                     });
                 } catch (error) {
-                    // エラー処理
+                    console.error('テーブル描画エラー:', error);
                 }
             }
             
             toggleItem(itemId, set) {
                 try {
                     const item = this.rawData[itemId];
-                    if (!item) return;
+                    if (!item) {
+                        console.warn('アイテムが見つかりません:', itemId);
+                        return;
+                    }
                     
                     const selectedMap = set === 'a' ? this.selectedItemsA : this.selectedItemsB;
                     const otherMap = set === 'a' ? this.selectedItemsB : this.selectedItemsA;
@@ -1330,7 +1330,7 @@
                     this.updateSelectedItemsDisplay();
                     this.renderTable();
                 } catch (error) {
-                    // エラー処理
+                    console.error('アイテム切り替えエラー:', error);
                 }
             }
             
@@ -1340,7 +1340,7 @@
                     this.updateSetDisplay('b', this.selectedItemsB);
                     this.updateTotalPrices();
                 } catch (error) {
-                    // エラー処理
+                    console.error('選択アイテム表示更新エラー:', error);
                 }
             }
             
@@ -1367,11 +1367,11 @@
                             `;
                             container.appendChild(itemDiv);
                         } catch (itemError) {
-                            // エラー処理
+                            console.warn('選択アイテム表示エラー:', itemId, itemError);
                         }
                     });
                 } catch (error) {
-                    // エラー処理
+                    console.error('セット表示更新エラー:', error);
                 }
             }
             
@@ -1388,17 +1388,18 @@
                     if (elementA) elementA.textContent = `セットA: ${this.formatPriceShort(totalA)} NESO`;
                     if (elementB) elementB.textContent = `セットB: ${this.formatPriceShort(totalB)} NESO`;
                 } catch (error) {
-                    // エラー処理
+                    console.error('合計価格更新エラー:', error);
                 }
             }
             
             async refreshData() {
                 try {
-                    localStorage.removeItem('equipmentDataCache');
-                    localStorage.removeItem('equipmentDataCacheTime');
+                    console.log('データ更新開始');
+                    this.clearAllCaches();
+                    this.initRetryCount = 0; // リトライカウントリセット
                     await this.init();
                 } catch (error) {
-                    // エラー処理
+                    console.error('データ更新エラー:', error);
                 }
             }
             
@@ -1409,7 +1410,7 @@
                         element.style.display = show ? 'block' : 'none';
                     }
                 } catch (error) {
-                    // エラー処理
+                    console.error('ローディング表示エラー:', error);
                 }
             }
             
@@ -1421,58 +1422,14 @@
                         errorDiv.style.display = 'block';
                     }
                     this.showLoading(false);
+                    console.error('エラー表示:', message);
                 } catch (error) {
-                    // エラー処理
+                    console.error('エラー表示失敗:', error);
                 }
             }
         }
         
-        // 簡略化されたチャート機能（オプション）
-        class SimpleChartManager {
-            constructor() {
-                this.isEnabled = typeof Chart !== 'undefined';
-                if (this.isEnabled) {
-                    this.setupHoverEvents();
-                }
-            }
-            
-            setupHoverEvents() {
-                let tooltip = null;
-                
-                document.addEventListener('mouseover', (e) => {
-                    if (e.target.classList.contains('item-image') && e.target.dataset.itemId) {
-                        tooltip = this.showSimpleTooltip(e.target, e.clientX, e.clientY);
-                    }
-                });
-                
-                document.addEventListener('mouseout', (e) => {
-                    if (e.target.classList.contains('item-image') && tooltip) {
-                        document.body.removeChild(tooltip);
-                        tooltip = null;
-                    }
-                });
-            }
-            
-            showSimpleTooltip(imageElement, mouseX, mouseY) {
-                const itemId = imageElement.dataset.itemId;
-                const tooltip = document.createElement('div');
-                tooltip.className = 'price-chart-tooltip';
-                tooltip.style.left = `${mouseX + 10}px`;
-                tooltip.style.top = `${mouseY - 50}px`;
-                tooltip.style.display = 'block';
-                tooltip.innerHTML = `
-                    <div style="text-align: center; padding: 10px;">
-                        <div>📊 価格チャート</div>
-                        <div style="font-size: 12px; color: #666;">アイテムID: ${itemId}</div>
-                        <div style="font-size: 11px; margin-top: 5px;">チャートデータを読み込み中...</div>
-                    </div>
-                `;
-                document.body.appendChild(tooltip);
-                return tooltip;
-            }
-        }
-        
-        // グローバル関数
+        // グローバル関数（既存の関数名を保持）
         function sortTable(field) {
             if (window.tracker) {
                 tracker.sortTable(field);
@@ -1546,4 +1503,85 @@
                     let html = `<strong>${tracker.getCategoryDisplayName(category)}:</strong><br>`;
                     
                     if (itemA && itemB) {
-                        const diff = item
+                        const diff = itemB.price - itemA.price;
+                        const diffText = diff >= 0 ? `+${tracker.formatPriceShort(Math.abs(diff))}` : `-${tracker.formatPriceShort(Math.abs(diff))}`;
+                        
+                        const nameA = itemA.item.item_name.length > 13 ? 
+                            itemA.item.item_name.substring(0, 13) + '...' : itemA.item.item_name;
+                        const nameB = itemB.item.item_name.length > 13 ? 
+                            itemB.item.item_name.substring(0, 13) + '...' : itemB.item.item_name;
+                        
+                        html += `A: ${nameA} (${tracker.formatPriceShort(itemA.price)})<br>`;
+                        html += `B: ${nameB} (${tracker.formatPriceShort(itemB.price)})<br>`;
+                        html += `差額: ${diffText} NESO`;
+                    } else if (itemA) {
+                        const nameA = itemA.item.item_name.length > 16 ? 
+                            itemA.item.item_name.substring(0, 16) + '...' : itemA.item.item_name;
+                        html += `A: ${nameA} (${tracker.formatPriceShort(itemA.price)})<br>`;
+                        html += `B: 未選択`;
+                    } else if (itemB) {
+                        const nameB = itemB.item.item_name.length > 16 ? 
+                            itemB.item.item_name.substring(0, 16) + '...' : itemB.item.item_name;
+                        html += `A: 未選択<br>`;
+                        html += `B: ${nameB} (${tracker.formatPriceShort(itemB.price))}`;
+                    }
+                    
+                    comparisonDiv.innerHTML = html;
+                    comparisonList.appendChild(comparisonDiv);
+                });
+                
+                comparisonSection.style.display = 'block';
+            } catch (error) {
+                console.error('比較エラー:', error);
+            }
+        }
+        
+        // 段階的初期化（Chart.js読み込み完了待ち）
+        let tracker;
+        let initializationAttempts = 0;
+        const maxInitAttempts = 5;
+        
+        function initializeApplication() {
+            try {
+                console.log(`アプリケーション初期化試行 ${initializationAttempts + 1}/${maxInitAttempts}`);
+                
+                // 基本システムの初期化
+                tracker = new MapleStoryPriceTracker();
+                window.tracker = tracker;
+                
+                console.log('基本システム初期化完了');
+                
+                // Chart.js機能は段階的に初期化（エラーがあっても基本機能は動作）
+                setTimeout(() => {
+                    if (typeof Chart !== 'undefined') {
+                        console.log('Chart.js利用可能 - チャート機能を有効化');
+                        // 将来的にChart.js機能を追加する場合はここに実装
+                    } else {
+                        console.log('Chart.js未利用 - 基本機能のみで動作');
+                    }
+                }, 1000);
+                
+            } catch (error) {
+                console.error('初期化エラー:', error);
+                initializationAttempts++;
+                
+                if (initializationAttempts < maxInitAttempts) {
+                    console.log(`${initializationAttempts + 1}秒後に再試行します...`);
+                    setTimeout(initializeApplication, (initializationAttempts + 1) * 1000);
+                } else {
+                    console.error('初期化に失敗しました。ページを更新してください。');
+                    document.getElementById('errorMessage').textContent = '初期化に失敗しました。ページを更新してください。';
+                    document.getElementById('errorMessage').style.display = 'block';
+                }
+            }
+        }
+        
+        // DOM読み込み完了後の初期化
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initializeApplication);
+        } else {
+            initializeApplication();
+        }
+    </script>
+</body>
+</html>
