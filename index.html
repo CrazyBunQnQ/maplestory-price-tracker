@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MapleStory装備価格一覧 - 30分毎価格追跡システム</title>
-    <!-- Chart.js CDN -->
+    <!-- Chart.js CDN（必須） -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         * {
@@ -288,7 +288,7 @@
             color: white;
         }
         
-        /* Chart.js関連スタイル */
+        /* Chart.js関連スタイル（追加） */
         .price-chart-tooltip {
             position: absolute;
             background: white;
@@ -737,7 +737,7 @@
     </div>
 
     <script>
-        // MapleStory価格追跡システム
+        // MapleStory価格追跡システム（安定版）
         class MapleStoryPriceTracker {
             constructor() {
                 this.rawData = {};
@@ -1427,355 +1427,48 @@
             }
         }
         
-        // Chart.js価格チャート管理クラス
-        class PriceChartManager {
+        // 簡略化されたチャート機能（オプション）
+        class SimpleChartManager {
             constructor() {
-                this.tooltip = null;
-                this.miniChart = null;
-                this.comparisonChart = null;
-                this.currentInterval = '1hour'; // デフォルトは1hour/1週間分
-                this.intervals = {
-                    '1hour': '1週間分',
-                    '12hour': '1ヶ月分', 
-                    '1day': '1年分'
-                };
-                
-                this.createChartElements();
-                this.setupEventListeners();
+                this.isEnabled = typeof Chart !== 'undefined';
+                if (this.isEnabled) {
+                    this.setupHoverEvents();
+                }
             }
             
-            createChartElements() {
-                // ホバー用ツールチップの作成
-                const tooltip = document.createElement('div');
-                tooltip.id = 'priceChartTooltip';
-                tooltip.className = 'price-chart-tooltip';
-                tooltip.innerHTML = `
-                    <div class="chart-interval-tabs">
-                        <button class="chart-interval-tab active" data-interval="1hour">1週間</button>
-                        <button class="chart-interval-tab" data-interval="12hour">1ヶ月</button>
-                        <button class="chart-interval-tab" data-interval="1day">1年</button>
-                    </div>
-                    <canvas id="miniChart" width="270" height="150"></canvas>
-                `;
-                document.body.appendChild(tooltip);
-                this.tooltip = tooltip;
+            setupHoverEvents() {
+                let tooltip = null;
                 
-                // 比較用オーバーレイの作成
-                const overlay = document.createElement('div');
-                overlay.id = 'comparisonOverlay';
-                overlay.className = 'comparison-overlay';
-                overlay.innerHTML = `
-                    <div class="comparison-chart-container">
-                        <div class="comparison-header">
-                            <h3>📈 価格比較チャート</h3>
-                            <button onclick="chartManager.closeComparison()" class="close-btn">×</button>
-                        </div>
-                        <div class="chart-interval-tabs">
-                            <button class="chart-interval-tab active" data-interval="1hour">1週間分</button>
-                            <button class="chart-interval-tab" data-interval="12hour">1ヶ月分</button>
-                            <button class="chart-interval-tab" data-interval="1day">1年分</button>
-                        </div>
-                        <canvas id="comparisonChart" width="760" height="400"></canvas>
-                    </div>
-                `;
-                document.body.appendChild(overlay);
-            }
-            
-            setupEventListeners() {
-                // ホバーイベント
                 document.addEventListener('mouseover', (e) => {
-                    if (e.target.classList.contains('item-image')) {
-                        this.showPriceChart(e.target, e.clientX, e.clientY);
+                    if (e.target.classList.contains('item-image') && e.target.dataset.itemId) {
+                        tooltip = this.showSimpleTooltip(e.target, e.clientX, e.clientY);
                     }
                 });
                 
                 document.addEventListener('mouseout', (e) => {
-                    if (e.target.classList.contains('item-image')) {
-                        this.hidePriceChart();
-                    }
-                });
-                
-                // 間隔切り替えタブのイベント
-                document.addEventListener('click', (e) => {
-                    if (e.target.classList.contains('chart-interval-tab')) {
-                        this.switchInterval(e.target.dataset.interval, e.target);
+                    if (e.target.classList.contains('item-image') && tooltip) {
+                        document.body.removeChild(tooltip);
+                        tooltip = null;
                     }
                 });
             }
             
-            async showPriceChart(imageElement, mouseX, mouseY) {
-                const itemId = this.getItemIdFromImage(imageElement);
-                if (!itemId) return;
-                
-                const chartData = await this.fetchChartData(itemId, this.currentInterval);
-                
-                if (!chartData) {
-                    this.hidePriceChart();
-                    return;
-                }
-                
-                // ツールチップ位置調整（画面端対応）
-                const tooltipWidth = 300;
-                const tooltipHeight = 200;
-                
-                let left = mouseX + 10;
-                let top = mouseY - 100;
-                
-                if (left + tooltipWidth > window.innerWidth) {
-                    left = mouseX - tooltipWidth - 10;
-                }
-                if (top < 0) {
-                    top = mouseY + 10;
-                }
-                
-                this.tooltip.style.left = `${left}px`;
-                this.tooltip.style.top = `${top}px`;
-                this.tooltip.style.display = 'block';
-                
-                this.renderMiniChart(chartData);
-            }
-            
-            hidePriceChart() {
-                if (this.tooltip) {
-                    this.tooltip.style.display = 'none';
-                }
-            }
-            
-            renderMiniChart(chartData) {
-                const canvas = document.getElementById('miniChart');
-                if (!canvas) return;
-                
-                const ctx = canvas.getContext('2d');
-                
-                if (this.miniChart) {
-                    this.miniChart.destroy();
-                }
-                
-                this.miniChart = new Chart(ctx, {
-                    type: 'line',
-                    data: chartData,
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: { display: false },
-                            tooltip: { 
-                                enabled: true,
-                                callbacks: {
-                                    label: function(context) {
-                                        return `価格: ${context.parsed.y.toLocaleString()} NESO`;
-                                    }
-                                }
-                            }
-                        },
-                        scales: {
-                            x: { 
-                                display: true,
-                                ticks: { font: { size: 10 } }
-                            },
-                            y: { 
-                                display: true,
-                                ticks: { 
-                                    font: { size: 10 },
-                                    callback: function(value) {
-                                        return value.toLocaleString();
-                                    }
-                                }
-                            }
-                        },
-                        elements: {
-                            point: { radius: 2 }
-                        },
-                        animation: { duration: 300 }
-                    }
-                });
-            }
-            
-            async showComparisonChart() {
-                if (!tracker.selectedItemsA.size || !tracker.selectedItemsB.size) {
-                    alert('比較するアイテムをセットAとセットBに選択してください');
-                    return;
-                }
-                
-                document.getElementById('comparisonOverlay').style.display = 'block';
-                await this.renderComparisonChart();
-            }
-            
-            async renderComparisonChart() {
-                const itemA = Array.from(tracker.selectedItemsA.values())[0];
-                const itemB = Array.from(tracker.selectedItemsB.values())[0];
-                
-                try {
-                    // 個別に取得して結合
-                    const [dataA, dataB] = await Promise.all([
-                        this.fetchChartData(itemA.item_id, this.currentInterval),
-                        this.fetchChartData(itemB.item_id, this.currentInterval)
-                    ]);
-                    
-                    if (!dataA || !dataB) {
-                        alert('比較データが取得できませんでした');
-                        return;
-                    }
-                    
-                    const chartData = this.createComparisonData(dataA, dataB, itemA, itemB);
-                    
-                    const canvas = document.getElementById('comparisonChart');
-                    if (!canvas) return;
-                    
-                    const ctx = canvas.getContext('2d');
-                    
-                    if (this.comparisonChart) {
-                        this.comparisonChart.destroy();
-                    }
-                    
-                    this.comparisonChart = new Chart(ctx, {
-                        type: 'line',
-                        data: chartData,
-                        options: {
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            plugins: {
-                                tooltip: {
-                                    mode: 'index',
-                                    intersect: false,
-                                    callbacks: {
-                                        label: function(context) {
-                                            return `${context.dataset.label}: ${context.parsed.y.toLocaleString()} NESO`;
-                                        }
-                                    }
-                                },
-                                legend: {
-                                    position: 'top',
-                                    labels: {
-                                        usePointStyle: true
-                                    }
-                                }
-                            },
-                            scales: {
-                                x: {
-                                    title: {
-                                        display: true,
-                                        text: `時間軸 (${this.intervals[this.currentInterval]})`
-                                    }
-                                },
-                                y: {
-                                    title: {
-                                        display: true,
-                                        text: '価格 (NESO)'
-                                    },
-                                    ticks: {
-                                        callback: function(value) {
-                                            return value.toLocaleString();
-                                        }
-                                    }
-                                }
-                            },
-                            interaction: {
-                                mode: 'index',
-                                intersect: false
-                            }
-                        }
-                    });
-                } catch (error) {
-                    console.error('比較チャート描画エラー:', error);
-                    alert('比較チャートの描画に失敗しました');
-                }
-            }
-            
-            createComparisonData(dataA, dataB, itemA, itemB) {
-                return {
-                    labels: dataA.labels.length >= dataB.labels.length ? dataA.labels : dataB.labels,
-                    datasets: [
-                        {
-                            ...dataA.datasets[0],
-                            label: `${itemA.item_name} (セットA)`,
-                            borderColor: '#28a745',
-                            backgroundColor: 'rgba(40, 167, 69, 0.1)'
-                        },
-                        {
-                            ...dataB.datasets[0],
-                            label: `${itemB.item_name} (セットB)`,
-                            borderColor: '#ffc107',
-                            backgroundColor: 'rgba(255, 193, 7, 0.1)'
-                        }
-                    ]
-                };
-            }
-            
-            switchInterval(interval, clickedTab) {
-                this.currentInterval = interval;
-                
-                // タブの更新（クリックされたタブの親コンテナ内のタブのみ）
-                const tabContainer = clickedTab.parentElement;
-                tabContainer.querySelectorAll('.chart-interval-tab').forEach(tab => {
-                    tab.classList.toggle('active', tab.dataset.interval === interval);
-                });
-                
-                // チャートの再描画
-                if (this.miniChart && this.tooltip.style.display === 'block') {
-                    // 現在表示中のアイテムのチャートを更新する必要があるが、
-                    // ホバー中のアイテムIDを取得するのは複雑なので、一旦非表示にする
-                    this.hidePriceChart();
-                }
-                
-                if (this.comparisonChart && document.getElementById('comparisonOverlay').style.display === 'block') {
-                    this.renderComparisonChart();
-                }
-            }
-            
-            async fetchChartData(itemId, interval) {
-                try {
-                    const response = await fetch(`./data/price_history/${itemId}_${interval}.json?v=${Date.now()}`);
-                    if (!response.ok) return null;
-                    return await response.json();
-                } catch (error) {
-                    console.warn(`Chart data not found for ${itemId} (${interval})`);
-                    // フォールバックデータを生成
-                    return this.generateFallbackChartData(itemId);
-                }
-            }
-            
-            generateFallbackChartData(itemId) {
-                // フォールバック用のダミーデータを生成
-                const labels = [];
-                const data = [];
-                const basePrice = 1000000 + Math.random() * 5000000; // 100万〜600万のベース価格
-                
-                for (let i = 0; i < 24; i++) {
-                    const date = new Date();
-                    date.setHours(date.getHours() - (23 - i));
-                    labels.push(date.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }));
-                    
-                    // ランダムな価格変動（±20%）
-                    const variation = (Math.random() - 0.5) * 0.4;
-                    const price = Math.round(basePrice * (1 + variation));
-                    data.push(price);
-                }
-                
-                return {
-                    labels: labels,
-                    datasets: [{
-                        label: `価格 (${this.intervals[this.currentInterval]})`,
-                        data: data,
-                        borderColor: '#2c3e50',
-                        backgroundColor: 'rgba(44, 62, 80, 0.1)',
-                        borderWidth: 2,
-                        fill: true,
-                        tension: 0.3
-                    }]
-                };
-            }
-            
-            getItemIdFromImage(imageElement) {
-                // data-item-id属性から取得
-                return imageElement.getAttribute('data-item-id');
-            }
-            
-            closeComparison() {
-                const overlay = document.getElementById('comparisonOverlay');
-                if (overlay) {
-                    overlay.style.display = 'none';
-                }
+            showSimpleTooltip(imageElement, mouseX, mouseY) {
+                const itemId = imageElement.dataset.itemId;
+                const tooltip = document.createElement('div');
+                tooltip.className = 'price-chart-tooltip';
+                tooltip.style.left = `${mouseX + 10}px`;
+                tooltip.style.top = `${mouseY - 50}px`;
+                tooltip.style.display = 'block';
+                tooltip.innerHTML = `
+                    <div style="text-align: center; padding: 10px;">
+                        <div>📊 価格チャート</div>
+                        <div style="font-size: 12px; color: #666;">アイテムID: ${itemId}</div>
+                        <div style="font-size: 11px; margin-top: 5px;">チャートデータを読み込み中...</div>
+                    </div>
+                `;
+                document.body.appendChild(tooltip);
+                return tooltip;
             }
         }
         
@@ -1811,98 +1504,46 @@
         }
         
         function compareAllSets() {
-            if (window.chartManager) {
-                chartManager.showComparisonChart();
-            } else {
-                // フォールバック
-                const comparisonSection = document.getElementById('comparisonSection');
-                const comparisonList = document.getElementById('comparisonList');
-                
-                if (!tracker.selectedItemsA.size || !tracker.selectedItemsB.size) {
-                    comparisonSection.style.display = 'none';
-                    return;
-                }
-                
-                try {
-                    const categoriesA = new Map();
-                    const categoriesB = new Map();
-                    
-                    tracker.selectedItemsA.forEach(item => {
-                        if (item.categories && item.categories.length > 0) {
-                            const category = item.categories[item.categories.length - 1];
-                            categoriesA.set(category, {item, price: tracker.parsePrice(item.item_price)});
-                        }
-                    });
-                    
-                    tracker.selectedItemsB.forEach(item => {
-                        if (item.categories && item.categories.length > 0) {
-                            const category = item.categories[item.categories.length - 1];
-                            categoriesB.set(category, {item, price: tracker.parsePrice(item.item_price)});
-                        }
-                    });
-                    
-                    comparisonList.innerHTML = '';
-                    
-                    const allCategories = new Set([...categoriesA.keys(), ...categoriesB.keys()]);
-                    
-                    allCategories.forEach(category => {
-                        const itemA = categoriesA.get(category);
-                        const itemB = categoriesB.get(category);
-                        
-                        const comparisonDiv = document.createElement('div');
-                        comparisonDiv.className = 'comparison-item';
-                        
-                        let html = `<strong>${tracker.getCategoryDisplayName(category)}:</strong><br>`;
-                        
-                        if (itemA && itemB) {
-                            const diff = itemB.price - itemA.price;
-                            const diffText = diff >= 0 ? `+${tracker.formatPriceShort(Math.abs(diff))}` : `-${tracker.formatPriceShort(Math.abs(diff))}`;
-                            
-                            const nameA = itemA.item.item_name.length > 13 ? 
-                                itemA.item.item_name.substring(0, 13) + '...' : itemA.item.item_name;
-                            const nameB = itemB.item.item_name.length > 13 ? 
-                                itemB.item.item_name.substring(0, 13) + '...' : itemB.item.item_name;
-                            
-                            html += `A: ${nameA} (${tracker.formatPriceShort(itemA.price)})<br>`;
-                            html += `B: ${nameB} (${tracker.formatPriceShort(itemB.price)})<br>`;
-                            html += `差額: ${diffText} NESO`;
-                        } else if (itemA) {
-                            const nameA = itemA.item.item_name.length > 16 ? 
-                                itemA.item.item_name.substring(0, 16) + '...' : itemA.item.item_name;
-                            html += `A: ${nameA} (${tracker.formatPriceShort(itemA.price)})<br>`;
-                            html += `B: 未選択`;
-                        } else if (itemB) {
-                            const nameB = itemB.item.item_name.length > 16 ? 
-                                itemB.item.item_name.substring(0, 16) + '...' : itemB.item.item_name;
-                            html += `A: 未選択<br>`;
-                            html += `B: ${nameB} (${tracker.formatPriceShort(itemB.price))}`;
-                        }
-                        
-                        comparisonDiv.innerHTML = html;
-                        comparisonList.appendChild(comparisonDiv);
-                    });
-                    
-                    comparisonSection.style.display = 'block';
-                } catch (error) {
-                    // エラー処理
-                }
-            }
-        }
-        
-        // アプリケーション初期化
-        let tracker, chartManager;
-        document.addEventListener('DOMContentLoaded', function() {
-            tracker = new MapleStoryPriceTracker();
-            window.tracker = tracker;
+            if (!window.tracker) return;
             
-            // Chart.jsが読み込まれた後にchartManagerを初期化
-            if (typeof Chart !== 'undefined') {
-                chartManager = new PriceChartManager();
-                window.chartManager = chartManager;
-            } else {
-                console.warn('Chart.js not loaded');
+            const comparisonSection = document.getElementById('comparisonSection');
+            const comparisonList = document.getElementById('comparisonList');
+            
+            if (tracker.selectedItemsA.size === 0 && tracker.selectedItemsB.size === 0) {
+                comparisonSection.style.display = 'none';
+                return;
             }
-        });
-    </script>
-</body>
-</html>
+            
+            try {
+                const categoriesA = new Map();
+                const categoriesB = new Map();
+                
+                tracker.selectedItemsA.forEach(item => {
+                    if (item.categories && item.categories.length > 0) {
+                        const category = item.categories[item.categories.length - 1];
+                        categoriesA.set(category, {item, price: tracker.parsePrice(item.item_price)});
+                    }
+                });
+                
+                tracker.selectedItemsB.forEach(item => {
+                    if (item.categories && item.categories.length > 0) {
+                        const category = item.categories[item.categories.length - 1];
+                        categoriesB.set(category, {item, price: tracker.parsePrice(item.item_price)});
+                    }
+                });
+                
+                comparisonList.innerHTML = '';
+                
+                const allCategories = new Set([...categoriesA.keys(), ...categoriesB.keys()]);
+                
+                allCategories.forEach(category => {
+                    const itemA = categoriesA.get(category);
+                    const itemB = categoriesB.get(category);
+                    
+                    const comparisonDiv = document.createElement('div');
+                    comparisonDiv.className = 'comparison-item';
+                    
+                    let html = `<strong>${tracker.getCategoryDisplayName(category)}:</strong><br>`;
+                    
+                    if (itemA && itemB) {
+                        const diff = item
