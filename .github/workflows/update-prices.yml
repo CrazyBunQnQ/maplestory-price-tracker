@@ -10,7 +10,6 @@ on:
         default: 'ALL'
         type: string
 
-# 権限設定を追加
 permissions:
   contents: write
   actions: read
@@ -21,7 +20,7 @@ env:
 jobs:
   update-prices:
     runs-on: ubuntu-latest
-    timeout-minutes: 120  # 全件処理のため時間延長
+    timeout-minutes: 120
     
     steps:
     - name: Checkout repository
@@ -47,7 +46,6 @@ jobs:
         
         echo "Using simplified ChromeDriver download approach"
         CHROMEDRIVER_VERSION="136.0.7103.92"
-        echo "Using ChromeDriver version: $CHROMEDRIVER_VERSION"
         
         CHROMEDRIVER_URL="https://storage.googleapis.com/chrome-for-testing-public/$CHROMEDRIVER_VERSION/linux64/chromedriver-linux64.zip"
         echo "Downloading from: $CHROMEDRIVER_URL"
@@ -74,17 +72,48 @@ jobs:
     
     - name: Update equipment prices
       run: |
-        echo "Starting price update at $(date '+%Y-%m-%d %H:%M:%S JST')"
+        echo "Starting MapleStory Equipment Price Auto Update at $(date '+%Y-%m-%d %H:%M:%S JST')"
         python scripts/update_prices.py
-        echo "Price update completed at $(date '+%Y-%m-%d %H:%M:%S JST')"
+        echo "MapleStory Equipment Price Auto Update completed at $(date '+%Y-%m-%d %H:%M:%S JST')"
       env:
         TARGET_ITEMS: ${{ github.event.inputs.target_items || 'ALL' }}
         PYTHONPATH: ${{ github.workspace }}
     
+    # 📊 履歴更新とチャート生成（価格更新直後に実行）
+    - name: Update historical price data
+      run: |
+        echo "Updating historical price data"
+        python scripts/historical_price_tracker.py
+        echo "Historical data update completed"
+      env:
+        PYTHONPATH: ${{ github.workspace }}
+    
+    - name: Export chart data for web
+      run: |
+        echo "Exporting chart data for web display"
+        python -c "
+        from scripts.historical_price_tracker import HistoricalPriceTracker
+        import json
+        import os
+        
+        tracker = HistoricalPriceTracker()
+        with open('data/equipment_prices.json', 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        
+        exported = 0
+        for item_id in data.keys():
+            for interval in ['1hour', '12hour', '1day']:
+                if tracker.export_chart_data_for_web(item_id, interval):
+                    exported += 1
+        
+        print(f'Exported {exported} chart data files')
+        "
+    
+    # 🔍 改善された変更検出（price_historyも含む）
     - name: Check for changes
       id: check-changes
       run: |
-        if [ -n "$(git status --porcelain data/equipment_prices.json)" ]; then
+        if [ -n "$(git status --porcelain data/)" ]; then
           echo "changed=true" >> $GITHUB_OUTPUT
           echo "Data has been updated"
         else
@@ -92,6 +121,7 @@ jobs:
           echo "No changes in data"
         fi
     
+    # 📤 改善されたコミット（全dataディレクトリを対象）
     - name: Commit and push changes
       if: steps.check-changes.outputs.changed == 'true'
       run: |
@@ -99,22 +129,24 @@ jobs:
         git config --local user.name "GitHub Action Bot"
         
         UPDATED_COUNT=$(git diff data/equipment_prices.json | grep -c '^+.*item_price' || echo "0")
+        CHART_COUNT=$(find data/price_history -name "*.json" 2>/dev/null | wc -l || echo "0")
         CURRENT_TIME=$(date '+%Y-%m-%d %H:%M:%S JST')
         
-        git add data/equipment_prices.json
-        git commit -m "Auto-update equipment prices
+        git add data/
+        git commit -m "Auto-update equipment prices and charts
 
         Update time: ${CURRENT_TIME}
         Updated items: ${UPDATED_COUNT}
+        Chart files: ${CHART_COUNT}
         Automated by GitHub Actions"
         
         git push origin ${{ github.ref_name }}
         
-        echo "Updated ${UPDATED_COUNT} items and pushed to repository"
+        echo "Updated ${UPDATED_COUNT} items and ${CHART_COUNT} chart files"
     
     - name: Generate summary
       run: |
-        echo "## MapleStory Equipment Price Update Results" >> $GITHUB_STEP_SUMMARY
+        echo "## MapleStory Equipment Price Auto Update Results" >> $GITHUB_STEP_SUMMARY
         echo "| Item | Result |" >> $GITHUB_STEP_SUMMARY
         echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
         echo "| Execution Time | $(date '+%Y-%m-%d %H:%M:%S JST') |" >> $GITHUB_STEP_SUMMARY
@@ -123,7 +155,7 @@ jobs:
         echo "| Workflow Run ID | ${{ github.run_id }} |" >> $GITHUB_STEP_SUMMARY
         
         if [ "${{ steps.check-changes.outputs.changed }}" == "true" ]; then
-          echo "| Status | Price update successful |" >> $GITHUB_STEP_SUMMARY
+          echo "| Status | ✅ Price update and chart generation successful |" >> $GITHUB_STEP_SUMMARY
         else
-          echo "| Status | No changes detected |" >> $GITHUB_STEP_SUMMARY
+          echo "| Status | ℹ️ No changes detected |" >> $GITHUB_STEP_SUMMARY
         fi
