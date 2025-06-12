@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MapleStory装備価格一覧 - 30分毎価格追跡システム</title>
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -195,6 +197,12 @@
             object-fit: contain;
             border-radius: 3px;
             box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            cursor: pointer;
+            transition: transform 0.2s ease;
+        }
+        
+        .item-image:hover {
+            transform: scale(1.1);
         }
         
         .item-name {
@@ -278,6 +286,87 @@
         .select-btn.b:hover, .select-btn.b.selected {
             background: #ffc107;
             color: white;
+        }
+        
+        /* チャート関連のCSS */
+        .price-chart-tooltip {
+            position: absolute;
+            background: white;
+            border: 2px solid #2c3e50;
+            border-radius: 8px;
+            padding: 15px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            z-index: 1500;
+            display: none;
+            width: 320px;
+            height: 220px;
+            pointer-events: none;
+        }
+        
+        .chart-interval-tabs {
+            display: flex;
+            margin-bottom: 10px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .chart-interval-tab {
+            flex: 1;
+            padding: 5px 8px;
+            cursor: pointer;
+            border: none;
+            background: #f8f9fa;
+            font-size: 10px;
+            transition: all 0.2s ease;
+        }
+        
+        .chart-interval-tab:hover {
+            background: #e9ecef;
+        }
+        
+        .chart-interval-tab.active {
+            background: #2c3e50;
+            color: white;
+        }
+        
+        .comparison-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            z-index: 2000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .comparison-chart-container {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 900px;
+            height: 600px;
+            position: relative;
+        }
+        
+        .comparison-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        
+        .close-btn {
+            background: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            cursor: pointer;
+            font-size: 16px;
         }
         
         /* サイドバー */
@@ -623,8 +712,33 @@
         </div>
     </div>
 
+    <!-- チャート用要素（動的生成） -->
+    <div id="priceChartTooltip" class="price-chart-tooltip" style="display: none;">
+        <div class="chart-interval-tabs">
+            <button class="chart-interval-tab active" data-interval="1hour">1週間</button>
+            <button class="chart-interval-tab" data-interval="12hour">1ヶ月</button>
+            <button class="chart-interval-tab" data-interval="1day">1年</button>
+        </div>
+        <canvas id="miniChart" width="290" height="160"></canvas>
+    </div>
+    
+    <div id="comparisonOverlay" class="comparison-overlay" style="display: none;">
+        <div class="comparison-chart-container">
+            <div class="comparison-header">
+                <h3>📈 価格比較チャート</h3>
+                <button onclick="closeComparison()" class="close-btn">×</button>
+            </div>
+            <div class="chart-interval-tabs">
+                <button class="chart-interval-tab active" data-interval="1hour">1週間分</button>
+                <button class="chart-interval-tab" data-interval="12hour">1ヶ月分</button>
+                <button class="chart-interval-tab" data-interval="1day">1年分</button>
+            </div>
+            <canvas id="comparisonChart" width="860" height="480"></canvas>
+        </div>
+    </div>
+
     <script>
-        // MapleStory価格追跡システム
+        // 基本的なMapleStory価格追跡システム（元のコードベース）
         class MapleStoryPriceTracker {
             constructor() {
                 this.rawData = {};
@@ -850,7 +964,7 @@
                     }
                     
                     const setPatterns = [
-                        // Chaos Abyss セットに統合（Royal Von Leon と Royal Black Metal Shoulder を除外）
+                        // Chaos Abyss セットに統合（Royal Von Leon と Royal Black Metal を除外）
                         /^(Eagle Eye)\s/i,
                         /^(Trixter)\s/i,
                         /^(Royal)\s(?!Von Leon|Black Metal)/i, // Royal Von Leon と Royal Black Metal を除外
@@ -862,6 +976,7 @@
                         
                         // 独立したセット（Royal関連で除外されたもの）
                         /^(Royal Von Leon)\s/i,
+                        /^(Royal Black Metal)\s/i,
                         
                         // その他のセット
                         /^(Unchained)\s/i,
@@ -870,8 +985,9 @@
                         /^(Falcon Wing)\s/i,
                         /^(Shark Tooth)\s/i,
                         /^(Raven Horn)\s/i,
+                        /^(Enraged)\s/i,
                         /^(Neophyte)\s/i,
-                        /(Bean)\s/i
+                        /(Pink Bean)\s/i
                     ];
                     
                     for (const pattern of setPatterns) {
@@ -1174,7 +1290,7 @@
                             const row = tableBody.insertRow();
                             row.className = rowClass;
                             row.innerHTML = `
-                                <td><img src="${item.image_url || ''}" alt="${item.item_name}" class="item-image" loading="lazy" onerror="this.style.display='none'"></td>
+                                <td><img src="${item.image_url || ''}" alt="${item.item_name}" class="item-image" loading="lazy" data-item-id="${item.item_id}" onerror="this.style.display='none'"></td>
                                 <td class="item-name">${item.item_name}${setBadge}</td>
                                 <td class="price ${this.getPriceClass(price)}">${this.formatPrice(price)}</td>
                                 <td>${categoryDisplay}</td>
@@ -1312,7 +1428,267 @@
                 }
             }
         }
-        
+
+        // チャート管理クラス（基本機能のみ）
+        class PriceChartManager {
+            constructor() {
+                this.tooltip = null;
+                this.miniChart = null;
+                this.comparisonChart = null;
+                this.currentInterval = '1hour';
+                this.intervals = {
+                    '1hour': '1週間分',
+                    '12hour': '1ヶ月分', 
+                    '1day': '1年分'
+                };
+                
+                this.setupEventListeners();
+            }
+            
+            setupEventListeners() {
+                // ホバーイベント
+                document.addEventListener('mouseover', (e) => {
+                    if (e.target.classList.contains('item-image')) {
+                        this.showPriceChart(e.target, e.clientX, e.clientY);
+                    }
+                });
+                
+                document.addEventListener('mouseout', (e) => {
+                    if (e.target.classList.contains('item-image')) {
+                        this.hidePriceChart();
+                    }
+                });
+                
+                // 間隔切り替えタブのイベント
+                document.addEventListener('click', (e) => {
+                    if (e.target.classList.contains('chart-interval-tab')) {
+                        this.switchInterval(e.target.dataset.interval, e.target);
+                    }
+                });
+            }
+            
+            async showPriceChart(imageElement, mouseX, mouseY) {
+                const itemId = imageElement.getAttribute('data-item-id');
+                if (!itemId) return;
+                
+                // 簡単なサンプルチャートを表示
+                const tooltip = document.getElementById('priceChartTooltip');
+                if (!tooltip) return;
+                
+                // ツールチップ位置調整
+                const tooltipWidth = 320;
+                const tooltipHeight = 220;
+                
+                let left = mouseX + 10;
+                let top = mouseY - 100;
+                
+                if (left + tooltipWidth > window.innerWidth) {
+                    left = mouseX - tooltipWidth - 10;
+                }
+                if (top < 0) {
+                    top = mouseY + 10;
+                }
+                
+                tooltip.style.left = `${left}px`;
+                tooltip.style.top = `${top}px`;
+                tooltip.style.display = 'block';
+                
+                // サンプルチャートを描画
+                this.renderSampleChart();
+            }
+            
+            hidePriceChart() {
+                const tooltip = document.getElementById('priceChartTooltip');
+                if (tooltip) {
+                    tooltip.style.display = 'none';
+                }
+            }
+            
+            renderSampleChart() {
+                if (typeof Chart === 'undefined') return;
+                
+                const canvas = document.getElementById('miniChart');
+                if (!canvas) return;
+                
+                const ctx = canvas.getContext('2d');
+                
+                if (this.miniChart) {
+                    this.miniChart.destroy();
+                }
+                
+                // サンプルデータ
+                const sampleData = {
+                    labels: ['1日前', '20時間前', '16時間前', '12時間前', '8時間前', '4時間前', '現在'],
+                    datasets: [{
+                        label: `価格 (${this.intervals[this.currentInterval]})`,
+                        data: [2500000, 2600000, 2400000, 2750000, 2650000, 2800000, 2795000],
+                        borderColor: '#2c3e50',
+                        backgroundColor: 'rgba(44, 62, 80, 0.1)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.3
+                    }]
+                };
+                
+                this.miniChart = new Chart(ctx, {
+                    type: 'line',
+                    data: sampleData,
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: { 
+                                enabled: true,
+                                callbacks: {
+                                    label: function(context) {
+                                        return `価格: ${context.parsed.y.toLocaleString()} NESO`;
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: { 
+                                display: true,
+                                ticks: { font: { size: 9 } }
+                            },
+                            y: { 
+                                display: true,
+                                ticks: { 
+                                    font: { size: 9 },
+                                    callback: function(value) {
+                                        return (value / 1000000).toFixed(1) + 'M';
+                                    }
+                                }
+                            }
+                        },
+                        elements: {
+                            point: { radius: 2 }
+                        },
+                        animation: { duration: 300 }
+                    }
+                });
+            }
+            
+            switchInterval(interval, clickedTab) {
+                this.currentInterval = interval;
+                
+                // タブの更新
+                const tabContainer = clickedTab.parentElement;
+                tabContainer.querySelectorAll('.chart-interval-tab').forEach(tab => {
+                    tab.classList.toggle('active', tab.dataset.interval === interval);
+                });
+                
+                // チャートの再描画
+                if (this.miniChart) {
+                    this.renderSampleChart();
+                }
+            }
+            
+            async showComparisonChart() {
+                if (!tracker.selectedItemsA.size || !tracker.selectedItemsB.size) {
+                    alert('比較するアイテムをセットAとセットBに選択してください');
+                    return;
+                }
+                
+                const overlay = document.getElementById('comparisonOverlay');
+                if (overlay) {
+                    overlay.style.display = 'flex';
+                    this.renderComparisonChart();
+                }
+            }
+            
+            renderComparisonChart() {
+                if (typeof Chart === 'undefined') return;
+                
+                const canvas = document.getElementById('comparisonChart');
+                if (!canvas) return;
+                
+                const ctx = canvas.getContext('2d');
+                
+                if (this.comparisonChart) {
+                    this.comparisonChart.destroy();
+                }
+                
+                const itemA = Array.from(tracker.selectedItemsA.values())[0];
+                const itemB = Array.from(tracker.selectedItemsB.values())[0];
+                
+                // サンプル比較データ
+                const comparisonData = {
+                    labels: ['1日前', '20時間前', '16時間前', '12時間前', '8時間前', '4時間前', '現在'],
+                    datasets: [
+                        {
+                            label: `${itemA.item_name} (セットA)`,
+                            data: [2500000, 2600000, 2400000, 2750000, 2650000, 2800000, 2795000],
+                            borderColor: '#28a745',
+                            backgroundColor: 'rgba(40, 167, 69, 0.1)',
+                            borderWidth: 2,
+                            fill: false
+                        },
+                        {
+                            label: `${itemB.item_name} (セットB)`,
+                            data: [1400000, 1500000, 1350000, 1600000, 1550000, 1480000, 1480000],
+                            borderColor: '#ffc107',
+                            backgroundColor: 'rgba(255, 193, 7, 0.1)',
+                            borderWidth: 2,
+                            fill: false
+                        }
+                    ]
+                };
+                
+                this.comparisonChart = new Chart(ctx, {
+                    type: 'line',
+                    data: comparisonData,
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            tooltip: {
+                                mode: 'index',
+                                intersect: false,
+                                callbacks: {
+                                    label: function(context) {
+                                        return `${context.dataset.label}: ${context.parsed.y.toLocaleString()} NESO`;
+                                    }
+                                }
+                            },
+                            legend: {
+                                position: 'top',
+                                labels: {
+                                    usePointStyle: true
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                title: {
+                                    display: true,
+                                    text: `時間軸 (${this.intervals[this.currentInterval]})`
+                                }
+                            },
+                            y: {
+                                title: {
+                                    display: true,
+                                    text: '価格 (NESO)'
+                                },
+                                ticks: {
+                                    callback: function(value) {
+                                        return (value / 1000000).toFixed(1) + 'M';
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+            
+            closeComparison() {
+                const overlay = document.getElementById('comparisonOverlay');
+                if (overlay) {
+                    overlay.style.display = 'none';
+                }
+            }
+        }
         
         // グローバル関数
         function sortTable(field) {
@@ -1346,86 +1722,33 @@
         }
         
         function compareAllSets() {
-            if (!window.tracker) return;
-            
-            const comparisonSection = document.getElementById('comparisonSection');
-            const comparisonList = document.getElementById('comparisonList');
-            
-            if (tracker.selectedItemsA.size === 0 && tracker.selectedItemsB.size === 0) {
-                comparisonSection.style.display = 'none';
-                return;
+            if (window.chartManager) {
+                chartManager.showComparisonChart();
             }
-            
-            try {
-                const categoriesA = new Map();
-                const categoriesB = new Map();
-                
-                tracker.selectedItemsA.forEach(item => {
-                    if (item.categories && item.categories.length > 0) {
-                        const category = item.categories[item.categories.length - 1];
-                        categoriesA.set(category, {item, price: tracker.parsePrice(item.item_price)});
-                    }
-                });
-                
-                tracker.selectedItemsB.forEach(item => {
-                    if (item.categories && item.categories.length > 0) {
-                        const category = item.categories[item.categories.length - 1];
-                        categoriesB.set(category, {item, price: tracker.parsePrice(item.item_price)});
-                    }
-                });
-                
-                comparisonList.innerHTML = '';
-                
-                const allCategories = new Set([...categoriesA.keys(), ...categoriesB.keys()]);
-                
-                allCategories.forEach(category => {
-                    const itemA = categoriesA.get(category);
-                    const itemB = categoriesB.get(category);
-                    
-                    const comparisonDiv = document.createElement('div');
-                    comparisonDiv.className = 'comparison-item';
-                    
-                    let html = `<strong>${tracker.getCategoryDisplayName(category)}:</strong><br>`;
-                    
-                    if (itemA && itemB) {
-                        const diff = itemB.price - itemA.price;
-                        const diffText = diff >= 0 ? `+${tracker.formatPriceShort(Math.abs(diff))}` : `-${tracker.formatPriceShort(Math.abs(diff))}`;
-                        
-                        const nameA = itemA.item.item_name.length > 13 ? 
-                            itemA.item.item_name.substring(0, 13) + '...' : itemA.item.item_name;
-                        const nameB = itemB.item.item_name.length > 13 ? 
-                            itemB.item.item_name.substring(0, 13) + '...' : itemB.item.item_name;
-                        
-                        html += `A: ${nameA} (${tracker.formatPriceShort(itemA.price)})<br>`;
-                        html += `B: ${nameB} (${tracker.formatPriceShort(itemB.price)})<br>`;
-                        html += `差額: ${diffText} NESO`;
-                    } else if (itemA) {
-                        const nameA = itemA.item.item_name.length > 16 ? 
-                            itemA.item.item_name.substring(0, 16) + '...' : itemA.item.item_name;
-                        html += `A: ${nameA} (${tracker.formatPriceShort(itemA.price)})<br>`;
-                        html += `B: 未選択`;
-                    } else if (itemB) {
-                        const nameB = itemB.item.item_name.length > 16 ? 
-                            itemB.item.item_name.substring(0, 16) + '...' : itemB.item.item_name;
-                        html += `A: 未選択<br>`;
-                        html += `B: ${nameB} (${tracker.formatPriceShort(itemB.price)})`;
-                    }
-                    
-                    comparisonDiv.innerHTML = html;
-                    comparisonList.appendChild(comparisonDiv);
-                });
-                
-                comparisonSection.style.display = 'block';
-            } catch (error) {
-                // エラー処理
+        }
+        
+        function closeComparison() {
+            if (window.chartManager) {
+                chartManager.closeComparison();
             }
         }
         
         // アプリケーション初期化
         let tracker;
+        let chartManager;
+        
         document.addEventListener('DOMContentLoaded', function() {
+            // 基本システムを優先して初期化
             tracker = new MapleStoryPriceTracker();
             window.tracker = tracker;
+            
+            // Chart.jsが利用可能になったらチャート機能を初期化
+            if (typeof Chart !== 'undefined') {
+                setTimeout(() => {
+                    chartManager = new PriceChartManager();
+                    window.chartManager = chartManager;
+                }, 1000);
+            }
         });
     </script>
 </body>
