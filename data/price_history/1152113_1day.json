@@ -1,0 +1,18 @@
+{
+  "labels": [
+    "06/12"
+  ],
+  "datasets": [
+    {
+      "label": "価格 (1年分（1日毎）)",
+      "data": [
+        2800000
+      ],
+      "borderColor": "#2c3e50",
+      "backgroundColor": "rgba(44, 62, 80, 0.1)",
+      "borderWidth": 2,
+      "fill": true,
+      "tension": 0.3
+    }
+  ]
+}
