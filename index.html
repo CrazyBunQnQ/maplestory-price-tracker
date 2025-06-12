@@ -624,7 +624,7 @@
     </div>
 
     <script>
-        // 本番環境用MapleStory価格追跡システム
+        // MapleStory価格追跡システム
         class MapleStoryPriceTracker {
             constructor() {
                 this.rawData = {};
@@ -636,8 +636,6 @@
                 this.sortField = 'name';
                 this.sortDirection = 'asc';
                 this.currentTab = 'a';
-                this.initRetryCount = 0;
-                this.maxRetries = 3;
                 
                 this.init();
             }
@@ -645,7 +643,7 @@
             async init() {
                 try {
                     this.showLoading(true);
-                    await this.loadDataWithFallback();
+                    await this.loadData();
                     this.setupEventListeners();
                     this.generateFilters();
                     this.applyFilters();
@@ -653,84 +651,35 @@
                     this.renderTable();
                     this.showLoading(false);
                 } catch (error) {
-                    this.initRetryCount++;
-                    if (this.initRetryCount < this.maxRetries) {
-                        setTimeout(() => this.init(), this.initRetryCount * 2000);
-                    } else {
-                        this.showError('システムの初期化に失敗しました。ページを更新してください。');
-                    }
+                    this.showError('システムの初期化に失敗しました: ' + error.message);
                 }
             }
             
-            async loadDataWithFallback() {
-                const methods = [
-                    () => this.loadDataStandard(),
-                    () => this.loadDataAlternative(),
-                    () => this.loadDataFromCache()
-                ];
-                
-                for (const method of methods) {
-                    try {
-                        await method();
-                        if (Object.keys(this.rawData).length > 0) {
-                            return;
-                        }
-                    } catch (error) {
-                        continue;
-                    }
-                }
-                
-                // 全方法失敗時はデフォルトデータ
-                this.rawData = this.getFallbackData();
-            }
-            
-            async loadDataStandard() {
-                const cacheBuster = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-                const response = await fetch(`./data/equipment_prices.json?v=${cacheBuster}`, {
-                    method: 'GET',
-                    cache: 'no-cache',
-                    headers: {
-                        'Cache-Control': 'no-cache, no-store, must-revalidate',
-                        'Pragma': 'no-cache',
-                        'Expires': '0'
-                    }
-                });
-                
-                if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                
-                const responseText = await response.text();
-                if (!responseText || responseText.trim() === '') {
-                    throw new Error('Empty response');
-                }
-                
-                this.rawData = JSON.parse(responseText);
-                if (!this.rawData || Object.keys(this.rawData).length === 0) {
-                    throw new Error('No data found');
-                }
-                
-                // 成功時のみキャッシュ保存
-                localStorage.setItem('equipmentDataCache', JSON.stringify(this.rawData));
-                localStorage.setItem('equipmentDataCacheTime', Date.now().toString());
-            }
-            
-            async loadDataAlternative() {
-                // GitHub Pages対応の代替URL
-                const baseUrl = window.location.origin + window.location.pathname.replace(/\/[^\/]*$/, '');
-                const response = await fetch(`${baseUrl}/data/equipment_prices.json?v=${Date.now()}`);
-                
-                if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                this.rawData = await response.json();
-            }
-            
-            loadDataFromCache() {
+            async loadData() {
                 const cached = localStorage.getItem('equipmentDataCache');
                 const cacheTime = localStorage.getItem('equipmentDataCacheTime');
                 
                 if (cached && cacheTime && Date.now() - parseInt(cacheTime) < 1800000) {
-                    this.rawData = JSON.parse(cached);
-                    return;
+                    try {
+                        this.rawData = JSON.parse(cached);
+                        return;
+                    } catch (error) {
+                        localStorage.removeItem('equipmentDataCache');
+                        localStorage.removeItem('equipmentDataCacheTime');
+                    }
                 }
-                throw new Error('No valid cache');
+                
+                try {
+                    const response = await fetch('./data/equipment_prices.json?v=' + Date.now());
+                    if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    
+                    this.rawData = await response.json();
+                    
+                    localStorage.setItem('equipmentDataCache', JSON.stringify(this.rawData));
+                    localStorage.setItem('equipmentDataCacheTime', Date.now().toString());
+                } catch (error) {
+                    this.rawData = this.getFallbackData();
+                }
             }
             
             getFallbackData() {
@@ -803,7 +752,7 @@
                     document.getElementById('priceFilter').addEventListener('change', () => this.applyFilters());
                     document.getElementById('refreshBtn').addEventListener('click', () => this.refreshData());
                 } catch (error) {
-                    // Silent error handling
+                    // エラー処理
                 }
             }
             
@@ -841,14 +790,14 @@
                                 }
                             }
                         } catch (itemError) {
-                            // Silent error handling
+                            // エラー処理
                         }
                     });
                     
                     this.populateFilter('categoryFilter', categories, '');
                     this.populateFilter('setFilter', setNames, ' Set');
                 } catch (error) {
-                    // Silent error handling
+                    // エラー処理
                 }
             }
             
@@ -868,7 +817,7 @@
                         filter.appendChild(option);
                     });
                 } catch (error) {
-                    // Silent error handling
+                    // エラー処理
                 }
             }
             
@@ -893,7 +842,7 @@
                 }
             }
             
-            // セット検出関数（Royal Black Metal Shoulderは何にも属さない）
+            // 修正されたセット検出関数（Royal Black Metal Shoulderを独立させる）
             detectSetName(itemName) {
                 try {
                     if (!itemName || typeof itemName !== 'string') {
@@ -901,7 +850,7 @@
                     }
                     
                     const setPatterns = [
-                        // Chaos Abyss セットに統合（Royal Von Leon と Royal Black Metal を除外）
+                        // Chaos Abyss セットに統合（Royal Von Leon と Royal Black Metal Shoulder を除外）
                         /^(Eagle Eye)\s/i,
                         /^(Trixter)\s/i,
                         /^(Royal)\s(?!Von Leon|Black Metal)/i, // Royal Von Leon と Royal Black Metal を除外
@@ -913,7 +862,6 @@
                         
                         // 独立したセット（Royal関連で除外されたもの）
                         /^(Royal Von Leon)\s/i,
-                        // Royal Black Metal は除外してパターンに含めない
                         
                         // その他のセット
                         /^(Unchained)\s/i,
@@ -923,7 +871,7 @@
                         /^(Shark Tooth)\s/i,
                         /^(Raven Horn)\s/i,
                         /^(Neophyte)\s/i,
-                        /(Pink Bean)\s/i
+                        /(Bean)\s/i
                     ];
                     
                     for (const pattern of setPatterns) {
@@ -1064,7 +1012,7 @@
                     this.updateStats();
                     this.renderTable();
                 } catch (error) {
-                    // Silent error handling
+                    // エラー処理
                 }
             }
             
@@ -1124,7 +1072,7 @@
                     
                     this.renderTable();
                 } catch (error) {
-                    // Silent error handling
+                    // エラー処理
                 }
             }
             
@@ -1146,7 +1094,7 @@
                     
                     this.displayLastUpdateTime();
                 } catch (error) {
-                    // Silent error handling
+                    // エラー処理
                 }
             }
             
@@ -1163,7 +1111,7 @@
                                 }
                             }
                         } catch (timeError) {
-                            // Silent error handling
+                            // エラー処理
                         }
                     });
                     
@@ -1185,7 +1133,7 @@
                     try {
                         document.getElementById('updateTime').textContent = new Date().toLocaleTimeString('ja-JP');
                     } catch (fallbackError) {
-                        // Silent error handling
+                        // フォールバックも失敗した場合は無視
                     }
                 }
             }
@@ -1241,11 +1189,11 @@
                                 </td>
                             `;
                         } catch (rowError) {
-                            // Silent error handling
+                            // エラー処理
                         }
                     });
                 } catch (error) {
-                    // Silent error handling
+                    // エラー処理
                 }
             }
             
@@ -1268,7 +1216,7 @@
                     this.updateSelectedItemsDisplay();
                     this.renderTable();
                 } catch (error) {
-                    // Silent error handling
+                    // エラー処理
                 }
             }
             
@@ -1278,7 +1226,7 @@
                     this.updateSetDisplay('b', this.selectedItemsB);
                     this.updateTotalPrices();
                 } catch (error) {
-                    // Silent error handling
+                    // エラー処理
                 }
             }
             
@@ -1305,11 +1253,11 @@
                             `;
                             container.appendChild(itemDiv);
                         } catch (itemError) {
-                            // Silent error handling
+                            // エラー処理
                         }
                     });
                 } catch (error) {
-                    // Silent error handling
+                    // エラー処理
                 }
             }
             
@@ -1326,7 +1274,7 @@
                     if (elementA) elementA.textContent = `セットA: ${this.formatPriceShort(totalA)} NESO`;
                     if (elementB) elementB.textContent = `セットB: ${this.formatPriceShort(totalB)} NESO`;
                 } catch (error) {
-                    // Silent error handling
+                    // エラー処理
                 }
             }
             
@@ -1334,10 +1282,9 @@
                 try {
                     localStorage.removeItem('equipmentDataCache');
                     localStorage.removeItem('equipmentDataCacheTime');
-                    this.initRetryCount = 0;
                     await this.init();
                 } catch (error) {
-                    // Silent error handling
+                    // エラー処理
                 }
             }
             
@@ -1348,7 +1295,7 @@
                         element.style.display = show ? 'block' : 'none';
                     }
                 } catch (error) {
-                    // Silent error handling
+                    // エラー処理
                 }
             }
             
@@ -1361,10 +1308,11 @@
                     }
                     this.showLoading(false);
                 } catch (error) {
-                    // Silent error handling
+                    // エラー処理
                 }
             }
         }
+        
         
         // グローバル関数
         function sortTable(field) {
@@ -1460,7 +1408,7 @@
                         const nameB = itemB.item.item_name.length > 16 ? 
                             itemB.item.item_name.substring(0, 16) + '...' : itemB.item.item_name;
                         html += `A: 未選択<br>`;
-                        html += `B: ${nameB} (${tracker.formatPriceShort(itemB.price))}`;
+                        html += `B: ${nameB} (${tracker.formatPriceShort(itemB.price)})`;
                     }
                     
                     comparisonDiv.innerHTML = html;
@@ -1469,30 +1417,16 @@
                 
                 comparisonSection.style.display = 'block';
             } catch (error) {
-                // Silent error handling
+                // エラー処理
             }
         }
         
-        // 本番環境用の初期化（サイレントエラーハンドリング）
+        // アプリケーション初期化
         let tracker;
         document.addEventListener('DOMContentLoaded', function() {
-            try {
-                tracker = new MapleStoryPriceTracker();
-                window.tracker = tracker;
-            } catch (error) {
-                // Silent error handling for production
-            }
+            tracker = new MapleStoryPriceTracker();
+            window.tracker = tracker;
         });
-        
-        // 即座に初期化（DOMContentLoaded待ちなし）
-        if (document.readyState !== 'loading') {
-            try {
-                tracker = new MapleStoryPriceTracker();
-                window.tracker = tracker;
-            } catch (error) {
-                // Silent error handling for production
-            }
-        }
     </script>
 </body>
 </html>
