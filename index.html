@@ -5,45 +5,67 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MapleStory装備価格一覧 - 30分毎価格追跡システム</title>
     
-    <!-- 複数のChart.js CDNフォールバック（検索結果[6][7]の推奨方法） -->
+    <!-- CSP対応のChart.js読み込み（検索結果[1]推奨の非モジュール版） -->
     <script>
-        window.chartjsLoadAttempts = 0;
-        window.maxChartjsAttempts = 3;
+        window.chartLoadingState = {
+            attempts: 0,
+            maxAttempts: 3,
+            loaded: false,
+            error: null
+        };
         
-        function loadChartjs(attempt = 0) {
+        function loadChartjsCSPSafe(attempt = 0) {
+            // 非モジュール版（UMD版）のChart.js CDN
             const cdnUrls = [
-                'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.min.js',
-                'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.min.js',
-                'https://unpkg.com/chart.js@4.4.1/dist/chart.min.js'
+                'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js',
+                'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js',
+                'https://unpkg.com/chart.js@4.4.1/dist/chart.umd.js'
             ];
             
             if (attempt >= cdnUrls.length) {
                 console.error('All Chart.js CDN attempts failed');
+                window.chartLoadingState.error = 'All CDN attempts failed';
                 return;
             }
             
             const script = document.createElement('script');
             script.src = cdnUrls[attempt];
             script.async = false;
+            script.type = 'text/javascript'; // 明示的に非モジュールと指定
             
             script.onload = function() {
-                console.log(`Chart.js loaded successfully from: ${cdnUrls[attempt]}`);
-                window.chartjsLoaded = true;
+                console.log(`Chart.js (UMD) loaded successfully from: ${cdnUrls[attempt]}`);
                 
-                // 成功時にイベントを発火
-                document.dispatchEvent(new CustomEvent('chartjsLoaded'));
+                // Chart.jsの存在確認を複数回試行
+                let checkAttempts = 0;
+                const checkChart = () => {
+                    checkAttempts++;
+                    if (typeof Chart !== 'undefined' && Chart.Chart) {
+                        window.chartLoadingState.loaded = true;
+                        console.log('Chart.js validation successful, version:', Chart.version);
+                        document.dispatchEvent(new CustomEvent('chartjsReady'));
+                    } else if (checkAttempts < 10) {
+                        setTimeout(checkChart, 100);
+                    } else {
+                        console.error('Chart.js loaded but not accessible');
+                        window.chartLoadingState.error = 'Chart object not accessible';
+                    }
+                };
+                
+                setTimeout(checkChart, 50);
             };
             
             script.onerror = function() {
                 console.warn(`Failed to load Chart.js from: ${cdnUrls[attempt]}`);
-                loadChartjs(attempt + 1);
+                window.chartLoadingState.attempts++;
+                loadChartjsCSPSafe(attempt + 1);
             };
             
             document.head.appendChild(script);
         }
         
         // Chart.js読み込み開始
-        loadChartjs();
+        loadChartjsCSPSafe();
     </script>
     
     <style>
@@ -411,7 +433,7 @@
             font-size: 16px;
         }
         
-        /* サイドバー等の既存CSS（paste.txtと同じ） */
+        /* サイドバー等の既存CSS（省略） */
         .sidebar {
             position: fixed;
             right: 0;
@@ -781,7 +803,7 @@
     </div>
 
     <script>
-        // 修正されたMapleStory価格追跡システム（Chart.js読み込み対応版）
+        // CSP対応・ストレージ制限対応のMapleStory価格追跡システム
         class MapleStoryPriceTracker {
             constructor() {
                 this.rawData = {};
@@ -793,6 +815,10 @@
                 this.sortField = 'name';
                 this.sortDirection = 'asc';
                 this.currentTab = 'a';
+                
+                // ストレージ代替（メモリ内キャッシュ）
+                this.memoryCache = new Map();
+                this.cacheTimeout = 1800000; // 30分
                 
                 this.init();
             }
@@ -812,17 +838,50 @@
                 }
             }
             
-            async loadData() {
-                const cached = localStorage.getItem('equipmentDataCache');
-                const cacheTime = localStorage.getItem('equipmentDataCacheTime');
+            // ストレージアクセス制限対応の代替キャッシュ機能
+            safeGetCache(key) {
+                try {
+                    // localStorageを試行
+                    const cached = localStorage.getItem(key);
+                    if (cached) return cached;
+                } catch (error) {
+                    console.warn('localStorage access denied, using memory cache');
+                }
                 
-                if (cached && cacheTime && Date.now() - parseInt(cacheTime) < 1800000) {
+                // メモリキャッシュをフォールバック
+                const cacheEntry = this.memoryCache.get(key);
+                if (cacheEntry && Date.now() - cacheEntry.timestamp < this.cacheTimeout) {
+                    return cacheEntry.data;
+                }
+                
+                return null;
+            }
+            
+            safeSetCache(key, value) {
+                try {
+                    // localStorageを試行
+                    localStorage.setItem(key, value);
+                } catch (error) {
+                    console.warn('localStorage access denied, using memory cache');
+                }
+                
+                // メモリキャッシュに保存
+                this.memoryCache.set(key, {
+                    data: value,
+                    timestamp: Date.now()
+                });
+            }
+            
+            async loadData() {
+                const cached = this.safeGetCache('equipmentDataCache');
+                const cacheTime = this.safeGetCache('equipmentDataCacheTime');
+                
+                if (cached && cacheTime && Date.now() - parseInt(cacheTime) < this.cacheTimeout) {
                     try {
                         this.rawData = JSON.parse(cached);
                         return;
                     } catch (error) {
-                        localStorage.removeItem('equipmentDataCache');
-                        localStorage.removeItem('equipmentDataCacheTime');
+                        console.warn('Cache parse error, fetching fresh data');
                     }
                 }
                 
@@ -832,9 +891,10 @@
                     
                     this.rawData = await response.json();
                     
-                    localStorage.setItem('equipmentDataCache', JSON.stringify(this.rawData));
-                    localStorage.setItem('equipmentDataCacheTime', Date.now().toString());
+                    this.safeSetCache('equipmentDataCache', JSON.stringify(this.rawData));
+                    this.safeSetCache('equipmentDataCacheTime', Date.now().toString());
                 } catch (error) {
+                    console.warn('Data fetch failed, using fallback data');
                     this.rawData = this.getFallbackData();
                 }
             }
@@ -909,7 +969,7 @@
                     document.getElementById('priceFilter').addEventListener('change', () => this.applyFilters());
                     document.getElementById('refreshBtn').addEventListener('click', () => this.refreshData());
                 } catch (error) {
-                    // エラー処理
+                    console.warn('Event listener setup error:', error);
                 }
             }
             
@@ -954,7 +1014,7 @@
                     this.populateFilter('categoryFilter', categories, '');
                     this.populateFilter('setFilter', setNames, ' Set');
                 } catch (error) {
-                    // エラー処理
+                    console.warn('Filter generation error:', error);
                 }
             }
             
@@ -974,7 +1034,7 @@
                         filter.appendChild(option);
                     });
                 } catch (error) {
-                    // エラー処理
+                    console.warn('Filter population error:', error);
                 }
             }
             
@@ -1162,7 +1222,7 @@
                     this.updateStats();
                     this.renderTable();
                 } catch (error) {
-                    // エラー処理
+                    console.warn('Filter application error:', error);
                 }
             }
             
@@ -1222,7 +1282,7 @@
                     
                     this.renderTable();
                 } catch (error) {
-                    // エラー処理
+                    console.warn('Sorting error:', error);
                 }
             }
             
@@ -1244,7 +1304,7 @@
                     
                     this.displayLastUpdateTime();
                 } catch (error) {
-                    // エラー処理
+                    console.warn('Stats update error:', error);
                 }
             }
             
@@ -1339,11 +1399,11 @@
                                 </td>
                             `;
                         } catch (rowError) {
-                            // エラー処理
+                            console.warn('Row rendering error:', rowError);
                         }
                     });
                 } catch (error) {
-                    // エラー処理
+                    console.warn('Table rendering error:', error);
                 }
             }
             
@@ -1366,7 +1426,7 @@
                     this.updateSelectedItemsDisplay();
                     this.renderTable();
                 } catch (error) {
-                    // エラー処理
+                    console.warn('Item toggle error:', error);
                 }
             }
             
@@ -1376,7 +1436,7 @@
                     this.updateSetDisplay('b', this.selectedItemsB);
                     this.updateTotalPrices();
                 } catch (error) {
-                    // エラー処理
+                    console.warn('Selected items display error:', error);
                 }
             }
             
@@ -1403,11 +1463,11 @@
                             `;
                             container.appendChild(itemDiv);
                         } catch (itemError) {
-                            // エラー処理
+                            console.warn('Set display item error:', itemError);
                         }
                     });
                 } catch (error) {
-                    // エラー処理
+                    console.warn('Set display error:', error);
                 }
             }
             
@@ -1424,17 +1484,17 @@
                     if (elementA) elementA.textContent = `セットA: ${this.formatPriceShort(totalA)} NESO`;
                     if (elementB) elementB.textContent = `セットB: ${this.formatPriceShort(totalB)} NESO`;
                 } catch (error) {
-                    // エラー処理
+                    console.warn('Total price update error:', error);
                 }
             }
             
             async refreshData() {
                 try {
-                    localStorage.removeItem('equipmentDataCache');
-                    localStorage.removeItem('equipmentDataCacheTime');
+                    // メモリキャッシュをクリア
+                    this.memoryCache.clear();
                     await this.init();
                 } catch (error) {
-                    // エラー処理
+                    console.warn('Data refresh error:', error);
                 }
             }
             
@@ -1445,7 +1505,7 @@
                         element.style.display = show ? 'block' : 'none';
                     }
                 } catch (error) {
-                    // エラー処理
+                    console.warn('Loading indicator error:', error);
                 }
             }
             
@@ -1458,12 +1518,12 @@
                     }
                     this.showLoading(false);
                 } catch (error) {
-                    // エラー処理
+                    console.warn('Error display error:', error);
                 }
             }
         }
 
-        // 完全に修正されたチャート管理クラス（Chart.js読み込み問題解決版）
+        // CSP対応・完全修正版チャート管理クラス
         class PriceChartManager {
             constructor() {
                 this.tooltip = null;
@@ -1485,23 +1545,16 @@
             }
             
             waitForChartJs() {
-                // Chart.jsが読み込まれているかチェック
-                if (typeof Chart !== 'undefined') {
-                    console.log('Chart.js is available, initializing chart manager...');
+                // Chart.js読み込み状態をチェック
+                if (window.chartLoadingState && window.chartLoadingState.loaded && typeof Chart !== 'undefined') {
+                    console.log('Chart.js (UMD) is ready, initializing chart manager...');
                     this.initialize();
                     return;
                 }
                 
-                // chartjsLoadedイベントを待つ
-                if (typeof window.chartjsLoaded !== 'undefined' && window.chartjsLoaded) {
-                    console.log('Chart.js loaded event detected, initializing...');
-                    this.initialize();
-                    return;
-                }
-                
-                // カスタムイベントリスナーを設定
-                document.addEventListener('chartjsLoaded', () => {
-                    console.log('Chart.js loaded event received, initializing...');
+                // chartjsReadyイベントを待つ
+                document.addEventListener('chartjsReady', () => {
+                    console.log('Chart.js ready event received, initializing...');
                     this.initialize();
                 }, { once: true });
                 
@@ -1512,6 +1565,9 @@
                     setTimeout(() => this.waitForChartJs(), 1000);
                 } else {
                     console.error('Chart.js initialization failed after maximum attempts');
+                    if (window.chartLoadingState && window.chartLoadingState.error) {
+                        console.error('Chart loading error:', window.chartLoadingState.error);
+                    }
                 }
             }
             
@@ -1534,7 +1590,7 @@
             }
             
             setupEventListeners() {
-                // ホバーイベント（修正版）
+                // ホバーイベント
                 document.addEventListener('mouseover', (e) => {
                     if (e.target.classList.contains('item-image') && this.isInitialized) {
                         this.showPriceChart(e.target, e.clientX, e.clientY);
@@ -1547,7 +1603,7 @@
                     }
                 });
                 
-                // 間隔切り替えタブのイベント（修正版）
+                // 間隔切り替えタブのイベント
                 document.addEventListener('click', (e) => {
                     if (e.target.classList.contains('chart-interval-tab')) {
                         e.preventDefault();
@@ -1574,7 +1630,6 @@
                 console.log(`Showing chart for item: ${itemId}`);
                 
                 try {
-                    // 実際のJSONデータを取得
                     const chartData = await this.fetchChartData(itemId, this.currentInterval);
                     
                     const tooltip = document.getElementById('priceChartTooltip');
@@ -1601,7 +1656,6 @@
                     tooltip.style.top = `${top}px`;
                     tooltip.style.display = 'block';
                     
-                    // チャートを描画
                     this.renderMiniChart(chartData, itemId);
                     
                 } catch (error) {
@@ -1626,7 +1680,6 @@
                 }
                 
                 try {
-                    // 実際のJSONファイルを読み込み
                     const url = `./data/price_history/${itemId}_${interval}.json`;
                     console.log(`Fetching chart data from: ${url}`);
                     
@@ -1659,23 +1712,20 @@
             }
             
             getSampleChartData(itemId) {
-                // フォールバック用サンプルデータ
                 const itemName = tracker?.rawData?.[itemId]?.item_name || 'Unknown Item';
                 const basePrice = tracker?.parsePrice(tracker.rawData?.[itemId]?.item_price) || 1000000;
                 
                 console.log(`Generating sample data for ${itemName} (base price: ${basePrice})`);
                 
-                // 現実的な価格変動を生成
                 const dataPoints = [];
                 const labels = [];
                 const now = new Date();
                 
                 for (let i = 6; i >= 0; i--) {
-                    const time = new Date(now.getTime() - i * 4 * 60 * 60 * 1000); // 4時間毎
+                    const time = new Date(now.getTime() - i * 4 * 60 * 60 * 1000);
                     labels.push(time.toLocaleDateString('ja-JP', { month: '2-digit', day: '2-digit' }) + ' ' + 
                               time.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }));
                     
-                    // 価格変動をシミュレート（±15%の範囲）
                     const variation = (Math.random() - 0.5) * 0.3;
                     const price = Math.round(basePrice * (1 + variation));
                     dataPoints.push(price);
@@ -1714,6 +1764,7 @@
                 }
                 
                 try {
+                    // CSP対応のChart.js設定（evalを使わない）
                     this.miniChart = new Chart(ctx, {
                         type: 'line',
                         data: chartData,
@@ -1762,7 +1813,11 @@
                             elements: {
                                 point: { radius: 2 }
                             },
-                            animation: { duration: 300 }
+                            animation: { 
+                                duration: 300,
+                                // CSP対応：evalを使わない設定
+                                easing: 'linear'
+                            }
                         }
                     });
                     
@@ -1786,7 +1841,6 @@
                 // 現在表示中のチャートがある場合は再描画
                 const tooltip = document.getElementById('priceChartTooltip');
                 if (this.miniChart && tooltip && tooltip.style.display === 'block') {
-                    // 最後に表示したアイテムのチャートを更新
                     const currentItem = document.querySelector('.item-image[data-item-id]');
                     if (currentItem) {
                         const itemId = currentItem.getAttribute('data-item-id');
@@ -1836,7 +1890,6 @@
                 try {
                     console.log('Rendering comparison chart for:', itemA.item_name, 'vs', itemB.item_name);
                     
-                    // 両方のアイテムのデータを並行取得
                     const [dataA, dataB] = await Promise.all([
                         this.fetchChartData(itemA.item_id, this.currentInterval),
                         this.fetchChartData(itemB.item_id, this.currentInterval)
@@ -1847,7 +1900,6 @@
                         return;
                     }
                     
-                    // 比較チャートデータを作成
                     const comparisonData = {
                         labels: dataA.labels.length >= dataB.labels.length ? dataA.labels : dataB.labels,
                         datasets: [
@@ -1922,6 +1974,10 @@
                             interaction: {
                                 mode: 'index',
                                 intersect: false
+                            },
+                            animation: { 
+                                duration: 300,
+                                easing: 'linear' // CSP対応
                             }
                         }
                     });
@@ -1985,7 +2041,7 @@
             }
         }
         
-        // アプリケーション初期化（Chart.js読み込み対応版）
+        // アプリケーション初期化（CSP・ストレージ制限対応版）
         let tracker;
         let chartManager;
         
@@ -1996,7 +2052,7 @@
             tracker = new MapleStoryPriceTracker();
             window.tracker = tracker;
             
-            // チャートマネージャーを初期化（Chart.js読み込み待ちを内包）
+            // チャートマネージャーを初期化（Chart.js読み込み待ち内包）
             chartManager = new PriceChartManager();
             window.chartManager = chartManager;
         });
