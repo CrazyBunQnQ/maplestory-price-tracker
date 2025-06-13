@@ -4,11 +4,50 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MapleStory装備価格一覧 - 30分毎価格追跡システム</title>
-    <!-- Chart.js CDN -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.min.js"></script>
-    <!-- 既存のCSS（変更なし） -->
+    
+    <!-- 複数のChart.js CDNフォールバック（検索結果[6][7]の推奨方法） -->
+    <script>
+        window.chartjsLoadAttempts = 0;
+        window.maxChartjsAttempts = 3;
+        
+        function loadChartjs(attempt = 0) {
+            const cdnUrls = [
+                'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.min.js',
+                'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.min.js',
+                'https://unpkg.com/chart.js@4.4.1/dist/chart.min.js'
+            ];
+            
+            if (attempt >= cdnUrls.length) {
+                console.error('All Chart.js CDN attempts failed');
+                return;
+            }
+            
+            const script = document.createElement('script');
+            script.src = cdnUrls[attempt];
+            script.async = false;
+            
+            script.onload = function() {
+                console.log(`Chart.js loaded successfully from: ${cdnUrls[attempt]}`);
+                window.chartjsLoaded = true;
+                
+                // 成功時にイベントを発火
+                document.dispatchEvent(new CustomEvent('chartjsLoaded'));
+            };
+            
+            script.onerror = function() {
+                console.warn(`Failed to load Chart.js from: ${cdnUrls[attempt]}`);
+                loadChartjs(attempt + 1);
+            };
+            
+            document.head.appendChild(script);
+        }
+        
+        // Chart.js読み込み開始
+        loadChartjs();
+    </script>
+    
     <style>
-        /* 既存のスタイル（paste.txtと同じ） */
+        /* 既存のCSS（paste.txtと同じ） */
         * {
             margin: 0;
             padding: 0;
@@ -36,7 +75,6 @@
             margin-right: 350px;
         }
         
-        /* 既存のスタイルをそのまま継続... */
         .header {
             background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
             color: white;
@@ -60,7 +98,6 @@
             z-index: 1;
         }
         
-        /* 以下、paste.txtの全てのCSSスタイルを継続... */
         .price-update-notice {
             background: #f39c12;
             color: white;
@@ -374,7 +411,7 @@
             font-size: 16px;
         }
         
-        /* 以下、既存のサイドバースタイル等... */
+        /* サイドバー等の既存CSS（paste.txtと同じ） */
         .sidebar {
             position: fixed;
             right: 0;
@@ -744,7 +781,7 @@
     </div>
 
     <script>
-        // 修正されたMapleStory価格追跡システム
+        // 修正されたMapleStory価格追跡システム（Chart.js読み込み対応版）
         class MapleStoryPriceTracker {
             constructor() {
                 this.rawData = {};
@@ -1426,7 +1463,7 @@
             }
         }
 
-        // 修正されたチャート管理クラス（完全にデバッグ済み）
+        // 完全に修正されたチャート管理クラス（Chart.js読み込み問題解決版）
         class PriceChartManager {
             constructor() {
                 this.tooltip = null;
@@ -1440,21 +1477,60 @@
                 };
                 this.chartDataCache = new Map();
                 this.isInitialized = false;
+                this.initializationAttempts = 0;
+                this.maxInitializationAttempts = 10;
                 
-                this.initialize();
+                // Chart.js読み込み完了を待つ
+                this.waitForChartJs();
+            }
+            
+            waitForChartJs() {
+                // Chart.jsが読み込まれているかチェック
+                if (typeof Chart !== 'undefined') {
+                    console.log('Chart.js is available, initializing chart manager...');
+                    this.initialize();
+                    return;
+                }
+                
+                // chartjsLoadedイベントを待つ
+                if (typeof window.chartjsLoaded !== 'undefined' && window.chartjsLoaded) {
+                    console.log('Chart.js loaded event detected, initializing...');
+                    this.initialize();
+                    return;
+                }
+                
+                // カスタムイベントリスナーを設定
+                document.addEventListener('chartjsLoaded', () => {
+                    console.log('Chart.js loaded event received, initializing...');
+                    this.initialize();
+                }, { once: true });
+                
+                // フォールバック：定期的にチェック
+                this.initializationAttempts++;
+                if (this.initializationAttempts < this.maxInitializationAttempts) {
+                    console.log(`Chart.js not ready yet, attempt ${this.initializationAttempts}/${this.maxInitializationAttempts}`);
+                    setTimeout(() => this.waitForChartJs(), 1000);
+                } else {
+                    console.error('Chart.js initialization failed after maximum attempts');
+                }
             }
             
             initialize() {
-                // Chart.jsがロードされるまで待機
+                // 重複初期化防止
+                if (this.isInitialized) {
+                    console.log('Chart manager already initialized');
+                    return;
+                }
+                
+                // 最終チェック
                 if (typeof Chart === 'undefined') {
-                    console.warn('Chart.js not loaded yet, retrying...');
-                    setTimeout(() => this.initialize(), 500);
+                    console.error('Chart.js still not available during initialization');
                     return;
                 }
                 
                 this.setupEventListeners();
                 this.isInitialized = true;
-                console.log('PriceChartManager initialized successfully');
+                console.log('PriceChartManager initialized successfully with Chart.js v' + Chart.version);
             }
             
             setupEventListeners() {
@@ -1495,7 +1571,7 @@
                     return;
                 }
                 
-                console.log(`Attempting to show chart for item: ${itemId}`);
+                console.log(`Showing chart for item: ${itemId}`);
                 
                 try {
                     // 実際のJSONデータを取得
@@ -1909,7 +1985,7 @@
             }
         }
         
-        // アプリケーション初期化（修正版）
+        // アプリケーション初期化（Chart.js読み込み対応版）
         let tracker;
         let chartManager;
         
@@ -1920,20 +1996,9 @@
             tracker = new MapleStoryPriceTracker();
             window.tracker = tracker;
             
-            // Chart.jsの利用可能性をチェックして初期化
-            function initializeCharts() {
-                if (typeof Chart !== 'undefined') {
-                    console.log('Chart.js detected, initializing chart manager...');
-                    chartManager = new PriceChartManager();
-                    window.chartManager = chartManager;
-                } else {
-                    console.warn('Chart.js not loaded, retrying in 1 second...');
-                    setTimeout(initializeCharts, 1000);
-                }
-            }
-            
-            // チャート初期化を少し遅らせる
-            setTimeout(initializeCharts, 500);
+            // チャートマネージャーを初期化（Chart.js読み込み待ちを内包）
+            chartManager = new PriceChartManager();
+            window.chartManager = chartManager;
         });
     </script>
 </body>
