@@ -1,0 +1,31 @@
+{
+  "labels": [
+    "06/14 04:29"
+  ],
+  "datasets": [
+    {
+      "label": "総価格 (1ヶ月分（12時間毎）)",
+      "data": [
+        1128558879
+      ],
+      "borderColor": "#e74c3c",
+      "backgroundColor": "rgba(231, 76, 60, 0.1)",
+      "borderWidth": 3,
+      "fill": true,
+      "tension": 0.3,
+      "yAxisID": "y"
+    },
+    {
+      "label": "平均価格 (1ヶ月分（12時間毎）)",
+      "data": [
+        4088981
+      ],
+      "borderColor": "#3498db",
+      "backgroundColor": "rgba(52, 152, 219, 0.1)",
+      "borderWidth": 2,
+      "fill": false,
+      "tension": 0.3,
+      "yAxisID": "y1"
+    }
+  ]
+}
