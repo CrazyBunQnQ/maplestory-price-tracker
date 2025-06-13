@@ -45,6 +45,10 @@ class GitHubActionsUpdater:
         self.updated_count = 0
         self.lock = threading.Lock()
         
+        # 価格異常検知の設定
+        self.price_drop_threshold = 0.30  # 30%以上の価格下落を異常とする
+        self.minimum_price_threshold = 50000  # 最低価格閾値（5万NESO以下は異常）
+        
         # 全件処理か制限処理かを判定
         if self.target_items_input.upper() == 'ALL':
             self.target_items = None  # 制限なし
@@ -68,7 +72,7 @@ class GitHubActionsUpdater:
         chrome_options.add_argument("--disable-gpu")
         chrome_options.add_argument("--window-size=1920,1080")
         
-        # paste-2.txtの並行処理対応設定
+        # 並行処理対応設定
         chrome_options.add_argument("--remote-debugging-port=0")
         chrome_options.add_argument("--disable-extensions")
         chrome_options.add_argument("--disable-plugins")
@@ -95,7 +99,7 @@ class GitHubActionsUpdater:
         return driver
 
     def search_equipment_js(self, driver, equipment_name):
-        """JavaScriptを使用した検索実行（paste.txt/paste-2.txtより）"""
+        """JavaScriptを使用した検索実行"""
         try:
             driver.get("https://msu.io/navigator")
             WebDriverWait(driver, 15).until(
@@ -136,7 +140,7 @@ class GitHubActionsUpdater:
             if not search_success:
                 raise Exception("Search field not found")
 
-            time.sleep(2)  # GitHub Actions用に短縮
+            time.sleep(2)
             return True
 
         except Exception as e:
@@ -178,33 +182,103 @@ class GitHubActionsUpdater:
         except Exception as e:
             raise Exception(f"価格抽出エラー: {e}")
 
-    def select_optimal_price(self, prices):
-        """最新5件から100,000以下を除外し最安値を選定"""
-        if not prices:
+    def parse_previous_price(self, price_str):
+        """前回価格を数値に変換"""
+        if not price_str or price_str in ['未取得', 'undefined', '']:
+            return None
+        
+        try:
+            # カンマ区切りの数値文字列を処理
+            cleaned_price = str(price_str).replace(',', '').replace(' NESO', '').strip()
+            return int(cleaned_price)
+        except (ValueError, TypeError):
             return None
 
-        logger.info(f"取得した最新5件の価格: {[f'{p:,}' for p in prices]}")
-
-        filtered_prices = [price for price in prices if price > 100000]
-
-        if not filtered_prices:
-            logger.warning("全ての価格が100,000以下のため、元の価格を使用")
-            return prices[0] if prices else None
-        else:
-            excluded_count = len(prices) - len(filtered_prices)
-            if excluded_count > 0:
-                logger.info(f"100,000以下の価格を{excluded_count}件除外")
-
-        optimal_price = filtered_prices[0]
-        logger.info(f"選定された最安値: {optimal_price:,}")
+    def detect_price_anomaly(self, new_price, previous_price):
+        """価格異常を検知（検索結果[4][5][6]のアルゴリズム応用）"""
+        anomaly_reasons = []
         
-        return optimal_price
+        # 1. 最低価格閾値チェック
+        if new_price < self.minimum_price_threshold:
+            anomaly_reasons.append(f"最低価格閾値以下 ({new_price:,} < {self.minimum_price_threshold:,})")
+        
+        # 2. 前回価格との比較（30%以上の下落チェック）
+        if previous_price and previous_price > 0:
+            price_drop_ratio = (previous_price - new_price) / previous_price
+            
+            if price_drop_ratio > self.price_drop_threshold:
+                drop_percentage = price_drop_ratio * 100
+                anomaly_reasons.append(
+                    f"前回価格からの異常下落 (-{drop_percentage:.1f}%: {previous_price:,} → {new_price:,})"
+                )
+        
+        return anomaly_reasons
+
+    def select_optimal_price(self, prices, previous_price):
+        """最新5件から異常価格を除外し最適価格を選定（修正版）"""
+        if not prices:
+            return None, "価格データなし"
+
+        logger.info(f"取得した最新5件の価格: {[f'{p:,}' for p in prices]}")
+        
+        if previous_price:
+            logger.info(f"前回価格: {previous_price:,}")
+        else:
+            logger.info("前回価格: 未取得")
+
+        # 各価格に対して異常検知を実行
+        valid_prices = []
+        anomaly_log = []
+
+        for price in prices:
+            anomaly_reasons = self.detect_price_anomaly(price, previous_price)
+            
+            if anomaly_reasons:
+                anomaly_log.append(f"  ❌ {price:,} NESO: {', '.join(anomaly_reasons)}")
+            else:
+                valid_prices.append(price)
+                anomaly_log.append(f"  ✅ {price:,} NESO: 正常")
+
+        # 異常検知結果をログ出力
+        logger.info("価格異常検知結果:")
+        for log_entry in anomaly_log:
+            logger.info(log_entry)
+
+        # 有効な価格がない場合の処理
+        if not valid_prices:
+            logger.warning("全ての価格が異常と判定されました")
+            
+            # 前回価格が存在する場合はそれを維持
+            if previous_price and previous_price > 0:
+                logger.info(f"前回価格を維持: {previous_price:,}")
+                return previous_price, "前回価格維持（全価格異常）"
+            else:
+                # 前回価格もない場合は最小の異常価格を使用（最後の手段）
+                min_price = min(prices)
+                logger.warning(f"最小価格を使用（異常価格）: {min_price:,}")
+                return min_price, "最小価格使用（異常あり）"
+
+        # 有効な価格から最安値を選択
+        optimal_price = min(valid_prices)
+        excluded_count = len(prices) - len(valid_prices)
+        
+        if excluded_count > 0:
+            logger.info(f"異常価格を{excluded_count}件除外")
+        
+        logger.info(f"選定された最適価格: {optimal_price:,}")
+        
+        return optimal_price, "正常価格"
 
     @retry_on_error(max_retries=3, delay=2)
-    def update_equipment_price_with_retry(self, equipment_id, equipment_name):
-        """特定の装備の価格を更新（paste.txt/paste-2.txtベース）"""
+    def update_equipment_price_with_retry(self, equipment_id, equipment_name, current_equipment_data):
+        """特定の装備の価格を更新（異常検知対応版）"""
         driver = None
         try:
+            # 前回価格を取得
+            previous_price = self.parse_previous_price(
+                current_equipment_data.get('item_price', '')
+            )
+            
             driver = self.setup_driver()
             
             if not self.search_equipment_js(driver, equipment_name):
@@ -214,13 +288,16 @@ class GitHubActionsUpdater:
             if not prices:
                 raise Exception("価格が見つかりません")
 
-            optimal_price = self.select_optimal_price(prices)
+            optimal_price, price_status = self.select_optimal_price(prices, previous_price)
+            
             if optimal_price:
-                logger.info(f"Success: {equipment_name}: {optimal_price:,} NESO")
+                logger.info(f"Success: {equipment_name}: {optimal_price:,} NESO ({price_status})")
                 return {
                     'equipment_id': equipment_id,
                     'equipment_name': equipment_name,
                     'price': optimal_price,
+                    'price_status': price_status,
+                    'previous_price': previous_price,
                     'success': True
                 }
             else:
@@ -242,7 +319,7 @@ class GitHubActionsUpdater:
                     pass
 
     def process_equipment_batch(self, equipment_items):
-        """装備アイテムのバッチ処理（paste-2.txtの並行処理ロジック）"""
+        """装備アイテムのバッチ処理"""
         results = []
         for equipment_id, equipment_info in equipment_items:
             equipment_name = equipment_info.get("item_name", "")
@@ -250,9 +327,17 @@ class GitHubActionsUpdater:
                 continue
 
             try:
-                result = self.update_equipment_price_with_retry(equipment_id, equipment_name)
+                result = self.update_equipment_price_with_retry(
+                    equipment_id, equipment_name, equipment_info
+                )
                 results.append(result)
-                logger.info(f"✅ {equipment_name}: {result.get('price', 'ERROR'):,}")
+                
+                if result.get('success'):
+                    status_info = result.get('price_status', '')
+                    logger.info(f"✅ {equipment_name}: {result.get('price', 'ERROR'):,} ({status_info})")
+                else:
+                    logger.error(f"❌ {equipment_name}: エラー")
+                    
             except Exception as e:
                 results.append({
                     'equipment_id': equipment_id,
@@ -267,11 +352,13 @@ class GitHubActionsUpdater:
         return results
 
     def run_update(self):
-        """価格更新実行（全件 or 制限件数対応）"""
+        """価格更新実行（異常検知機能付き）"""
         if self.target_items is None:
             logger.info(f"GitHub Actions price update started - Target: ALL items (parallel processing)")
         else:
             logger.info(f"GitHub Actions price update started - Target: {self.target_items} items")
+        
+        logger.info(f"価格異常検知設定: 下落閾値{self.price_drop_threshold*100}%, 最低価格{self.minimum_price_threshold:,}NESO")
         
         try:
             with open(self.json_file_path, 'r', encoding='utf-8') as f:
@@ -291,7 +378,7 @@ class GitHubActionsUpdater:
         logger.info(f"Processing {total} items")
 
         if self.use_parallel and total > 10:
-            # paste-2.txtの並行処理ロジック
+            # 並行処理ロジック
             chunk = total // 4
             batches = [
                 items[0:chunk],
@@ -325,19 +412,37 @@ class GitHubActionsUpdater:
                 equipment_name = equipment_info.get("item_name", "")
                 logger.info(f"[{i}/{total}] Processing: {equipment_name}")
                 
-                result = self.update_equipment_price_with_retry(equipment_id, equipment_name)
+                result = self.update_equipment_price_with_retry(
+                    equipment_id, equipment_name, equipment_info
+                )
                 all_results.append(result)
                 
                 time.sleep(5)  # GitHub Actions制限対応
 
-        # JSONデータに反映
+        # JSONデータに反映（異常検知結果を含む）
+        normal_updates = 0
+        anomaly_updates = 0
+        failed_updates = 0
+        
         for result in all_results:
             if result.get('success'):
                 equipment_data[result['equipment_id']]["item_price"] = f"{result['price']:,}"
-                equipment_data[result['equipment_id']]["status"] = "価格更新済み"
+                
+                # 価格ステータスに応じてステータスを設定
+                price_status = result.get('price_status', '')
+                if '異常' in price_status or '維持' in price_status:
+                    equipment_data[result['equipment_id']]["status"] = f"価格更新済み（{price_status}）"
+                    anomaly_updates += 1
+                else:
+                    equipment_data[result['equipment_id']]["status"] = "価格更新済み"
+                    normal_updates += 1
+                    
+                # 最終更新時刻を記録
+                equipment_data[result['equipment_id']]["last_updated"] = datetime.now().isoformat()
                 self.updated_count += 1
             else:
                 equipment_data[result['equipment_id']]["status"] = "価格取得失敗"
+                failed_updates += 1
 
         try:
             with open(self.json_file_path, 'w', encoding='utf-8') as f:
@@ -346,6 +451,15 @@ class GitHubActionsUpdater:
         except Exception as e:
             logger.error(f"Failed to save JSON: {e}")
             sys.exit(1)
+
+        # 最終統計
+        logger.info("=" * 50)
+        logger.info("📊 価格更新統計:")
+        logger.info(f"  正常更新: {normal_updates}件")
+        logger.info(f"  異常検知: {anomaly_updates}件")
+        logger.info(f"  更新失敗: {failed_updates}件")
+        logger.info(f"  合計処理: {total}件")
+        logger.info("=" * 50)
 
         logger.info(f"Update completed: {self.updated_count}/{total} items successful")
         sys.exit(0)
