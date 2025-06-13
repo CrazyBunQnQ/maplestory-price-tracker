@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MapleStory装備価格一覧 - 30分毎価格追跡システム</title>
     
-    <!-- CSP対応のChart.js読み込み（検索結果[1]推奨の非モジュール版） -->
+    <!-- CSP対応のChart.js読み込み -->
     <script>
         window.chartLoadingState = {
             attempts: 0,
@@ -15,7 +15,6 @@
         };
         
         function loadChartjsCSPSafe(attempt = 0) {
-            // 非モジュール版（UMD版）のChart.js CDN
             const cdnUrls = [
                 'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js',
                 'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js',
@@ -31,12 +30,11 @@
             const script = document.createElement('script');
             script.src = cdnUrls[attempt];
             script.async = false;
-            script.type = 'text/javascript'; // 明示的に非モジュールと指定
+            script.type = 'text/javascript';
             
             script.onload = function() {
                 console.log(`Chart.js (UMD) loaded successfully from: ${cdnUrls[attempt]}`);
                 
-                // Chart.jsの存在確認を複数回試行
                 let checkAttempts = 0;
                 const checkChart = () => {
                     checkAttempts++;
@@ -64,12 +62,10 @@
             document.head.appendChild(script);
         }
         
-        // Chart.js読み込み開始
         loadChartjsCSPSafe();
     </script>
     
     <style>
-        /* 既存のCSS（paste.txtと同じ） */
         * {
             margin: 0;
             padding: 0;
@@ -163,6 +159,81 @@
             color: #6c757d;
             text-transform: uppercase;
             letter-spacing: 1px;
+        }
+        
+        /* 総価格チャートセクション */
+        .total-price-chart-section {
+            background: white;
+            border-bottom: 1px solid #dee2e6;
+            padding: 20px;
+        }
+        
+        .total-price-chart-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 15px;
+        }
+        
+        .total-price-chart-title {
+            font-size: 1.1rem;
+            font-weight: bold;
+            color: #2c3e50;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .chart-toggle-btn {
+            padding: 6px 12px;
+            background: #3498db;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: background 0.3s ease;
+        }
+        
+        .chart-toggle-btn:hover {
+            background: #2980b9;
+        }
+        
+        .total-price-chart-container {
+            width: 100%;
+            height: 300px;
+            position: relative;
+            display: none;
+        }
+        
+        .total-price-chart-container.active {
+            display: block;
+        }
+        
+        .total-chart-interval-tabs {
+            display: flex;
+            margin-bottom: 15px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .total-chart-interval-tab {
+            flex: 1;
+            padding: 8px 12px;
+            cursor: pointer;
+            border: none;
+            background: #f8f9fa;
+            font-size: 12px;
+            transition: all 0.2s ease;
+            text-align: center;
+        }
+        
+        .total-chart-interval-tab:hover {
+            background: #e9ecef;
+        }
+        
+        .total-chart-interval-tab.active {
+            background: #e74c3c;
+            color: white;
         }
         
         .controls {
@@ -411,7 +482,7 @@
             border-radius: 12px;
             width: 90%;
             max-width: 900px;
-            height: 600px;
+            height: 700px;
             position: relative;
         }
         
@@ -433,7 +504,31 @@
             font-size: 16px;
         }
         
-        /* サイドバー等の既存CSS（省略） */
+        /* 縦軸分離用コントロール */
+        .dual-axis-control {
+            margin-bottom: 15px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 5px;
+        }
+        
+        .dual-axis-checkbox {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .dual-axis-checkbox input[type="checkbox"] {
+            transform: scale(1.2);
+        }
+        
+        .dual-axis-checkbox label {
+            font-size: 12px;
+            color: #495057;
+            cursor: pointer;
+        }
+        
+        /* サイドバー */
         .sidebar {
             position: fixed;
             right: 0;
@@ -656,7 +751,6 @@
     </style>
 </head>
 <body>
-    <!-- 既存のHTML構造（paste.txtと同じ） -->
     <div class="container">
         <div class="main-content">
             <div class="header">
@@ -688,6 +782,26 @@
                 <div class="stat-item">
                     <div class="stat-number" id="updateTime">-</div>
                     <div class="stat-label">最終更新</div>
+                </div>
+            </div>
+            
+            <!-- 総価格チャートセクション -->
+            <div class="total-price-chart-section">
+                <div class="total-price-chart-header">
+                    <div class="total-price-chart-title">
+                        📊 全アイテム価格推移
+                        <span id="totalPriceDisplay" style="color: #e74c3c; font-size: 0.9rem;"></span>
+                    </div>
+                    <button id="toggleTotalChart" class="chart-toggle-btn">📈 チャート表示</button>
+                </div>
+                
+                <div id="totalPriceChartContainer" class="total-price-chart-container">
+                    <div class="total-chart-interval-tabs">
+                        <button class="total-chart-interval-tab active" data-interval="1hour">1週間</button>
+                        <button class="total-chart-interval-tab" data-interval="12hour">1ヶ月</button>
+                        <button class="total-chart-interval-tab" data-interval="1day">1年</button>
+                    </div>
+                    <canvas id="totalPriceChart" width="800" height="280"></canvas>
                 </div>
             </div>
             
@@ -793,17 +907,26 @@
                 <h3>📈 価格比較チャート</h3>
                 <button onclick="closeComparison()" class="close-btn">×</button>
             </div>
+            
+            <!-- 縦軸分離コントロール -->
+            <div class="dual-axis-control">
+                <div class="dual-axis-checkbox">
+                    <input type="checkbox" id="dualAxisMode" onchange="chartManager.toggleDualAxisMode()">
+                    <label for="dualAxisMode">縦軸を分離して倍率調整 (価格差の大きいアイテム比較用)</label>
+                </div>
+            </div>
+            
             <div class="chart-interval-tabs">
                 <button class="chart-interval-tab active" data-interval="1hour">1週間分</button>
                 <button class="chart-interval-tab" data-interval="12hour">1ヶ月分</button>
                 <button class="chart-interval-tab" data-interval="1day">1年分</button>
             </div>
-            <canvas id="comparisonChart" width="860" height="480"></canvas>
+            <canvas id="comparisonChart" width="860" height="540"></canvas>
         </div>
     </div>
 
     <script>
-        // CSP対応・ストレージ制限対応のMapleStory価格追跡システム
+        // MapleStory価格追跡システム（省略版）
         class MapleStoryPriceTracker {
             constructor() {
                 this.rawData = {};
@@ -815,11 +938,8 @@
                 this.sortField = 'name';
                 this.sortDirection = 'asc';
                 this.currentTab = 'a';
-                
-                // ストレージ代替（メモリ内キャッシュ）
                 this.memoryCache = new Map();
-                this.cacheTimeout = 1800000; // 30分
-                
+                this.cacheTimeout = 1800000;
                 this.init();
             }
             
@@ -838,38 +958,27 @@
                 }
             }
             
-            // ストレージアクセス制限対応の代替キャッシュ機能
             safeGetCache(key) {
                 try {
-                    // localStorageを試行
                     const cached = localStorage.getItem(key);
                     if (cached) return cached;
                 } catch (error) {
                     console.warn('localStorage access denied, using memory cache');
                 }
-                
-                // メモリキャッシュをフォールバック
                 const cacheEntry = this.memoryCache.get(key);
                 if (cacheEntry && Date.now() - cacheEntry.timestamp < this.cacheTimeout) {
                     return cacheEntry.data;
                 }
-                
                 return null;
             }
             
             safeSetCache(key, value) {
                 try {
-                    // localStorageを試行
                     localStorage.setItem(key, value);
                 } catch (error) {
                     console.warn('localStorage access denied, using memory cache');
                 }
-                
-                // メモリキャッシュに保存
-                this.memoryCache.set(key, {
-                    data: value,
-                    timestamp: Date.now()
-                });
+                this.memoryCache.set(key, { data: value, timestamp: Date.now() });
             }
             
             async loadData() {
@@ -879,6 +988,7 @@
                 if (cached && cacheTime && Date.now() - parseInt(cacheTime) < this.cacheTimeout) {
                     try {
                         this.rawData = JSON.parse(cached);
+                        this.updateTotalPriceDisplay();
                         return;
                     } catch (error) {
                         console.warn('Cache parse error, fetching fresh data');
@@ -893,9 +1003,28 @@
                     
                     this.safeSetCache('equipmentDataCache', JSON.stringify(this.rawData));
                     this.safeSetCache('equipmentDataCacheTime', Date.now().toString());
+                    this.updateTotalPriceDisplay();
                 } catch (error) {
                     console.warn('Data fetch failed, using fallback data');
                     this.rawData = this.getFallbackData();
+                    this.updateTotalPriceDisplay();
+                }
+            }
+            
+            updateTotalPriceDisplay() {
+                try {
+                    const prices = Object.values(this.rawData)
+                        .map(item => this.parsePrice(item.item_price))
+                        .filter(p => p > 0);
+                    
+                    const totalPrice = prices.reduce((sum, price) => sum + price, 0);
+                    const displayElement = document.getElementById('totalPriceDisplay');
+                    
+                    if (displayElement) {
+                        displayElement.textContent = `(${this.formatPriceShort(totalPrice)} NESO)`;
+                    }
+                } catch (error) {
+                    console.warn('Total price display update error:', error);
                 }
             }
             
@@ -932,28 +1061,6 @@
                         "categories": ["Weapon", "Two-handed Weapon", "Bow"], 
                         "required_level": "130", 
                         "required_jobs": ["Bowman"],
-                        "last_updated": new Date().toISOString()
-                    },
-                    "1432285": {
-                        "item_name": "Fafnir Sword", 
-                        "image_url": "https://api-static.msu.io/itemimages/icon/1432285.png", 
-                        "item_id": "1432285", 
-                        "item_price": "4,500,000", 
-                        "status": "価格更新済み", 
-                        "categories": ["Weapon", "One-handed Weapon", "One-handed Sword"], 
-                        "required_level": "150", 
-                        "required_jobs": ["Warrior"],
-                        "last_updated": new Date().toISOString()
-                    },
-                    "1332285": {
-                        "item_name": "Necromancer Staff", 
-                        "image_url": "https://api-static.msu.io/itemimages/icon/1332285.png", 
-                        "item_id": "1332285", 
-                        "item_price": "2,100,000", 
-                        "status": "価格更新済み", 
-                        "categories": ["Weapon", "One-handed Weapon", "Staff"], 
-                        "required_level": "110", 
-                        "required_jobs": ["Magician"],
                         "last_updated": new Date().toISOString()
                     }
                 };
@@ -1488,7 +1595,6 @@
             
             async refreshData() {
                 try {
-                    // メモリキャッシュをクリア
                     this.memoryCache.clear();
                     await this.init();
                 } catch (error) {
@@ -1521,13 +1627,16 @@
             }
         }
 
-        // CSP対応・完全修正版チャート管理クラス
+        // 完全版チャート管理クラス（総価格チャート・縦軸分離対応）
         class PriceChartManager {
             constructor() {
                 this.tooltip = null;
                 this.miniChart = null;
                 this.comparisonChart = null;
+                this.totalPriceChart = null;
                 this.currentInterval = '1hour';
+                this.currentTotalInterval = '1hour';
+                this.dualAxisMode = false;
                 this.intervals = {
                     '1hour': '1週間分',
                     '12hour': '1ヶ月分', 
@@ -1538,25 +1647,21 @@
                 this.initializationAttempts = 0;
                 this.maxInitializationAttempts = 10;
                 
-                // Chart.js読み込み完了を待つ
                 this.waitForChartJs();
             }
             
             waitForChartJs() {
-                // Chart.js読み込み状態をチェック
                 if (window.chartLoadingState && window.chartLoadingState.loaded && typeof Chart !== 'undefined') {
                     console.log('Chart.js (UMD) is ready, initializing chart manager...');
                     this.initialize();
                     return;
                 }
                 
-                // chartjsReadyイベントを待つ
                 document.addEventListener('chartjsReady', () => {
                     console.log('Chart.js ready event received, initializing...');
                     this.initialize();
                 }, { once: true });
                 
-                // フォールバック：定期的にチェック
                 this.initializationAttempts++;
                 if (this.initializationAttempts < this.maxInitializationAttempts) {
                     console.log(`Chart.js not ready yet, attempt ${this.initializationAttempts}/${this.maxInitializationAttempts}`);
@@ -1570,25 +1675,24 @@
             }
             
             initialize() {
-                // 重複初期化防止
                 if (this.isInitialized) {
                     console.log('Chart manager already initialized');
                     return;
                 }
                 
-                // 最終チェック
                 if (typeof Chart === 'undefined') {
                     console.error('Chart.js still not available during initialization');
                     return;
                 }
                 
                 this.setupEventListeners();
+                this.setupTotalPriceChart();
                 this.isInitialized = true;
                 console.log('PriceChartManager initialized successfully with Chart.js v' + Chart.version);
             }
             
             setupEventListeners() {
-                // ホバーイベント
+                // 既存のホバーイベント
                 document.addEventListener('mouseover', (e) => {
                     if (e.target.classList.contains('item-image') && this.isInitialized) {
                         this.showPriceChart(e.target, e.clientX, e.clientY);
@@ -1607,10 +1711,271 @@
                         e.preventDefault();
                         e.stopPropagation();
                         this.switchInterval(e.target.dataset.interval, e.target);
+                    } else if (e.target.classList.contains('total-chart-interval-tab')) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        this.switchTotalInterval(e.target.dataset.interval, e.target);
                     }
                 });
                 
+                // 総価格チャート表示切り替え
+                document.getElementById('toggleTotalChart').addEventListener('click', () => {
+                    this.toggleTotalPriceChart();
+                });
+                
                 console.log('Chart event listeners setup complete');
+            }
+            
+            setupTotalPriceChart() {
+                this.loadTotalPriceChart();
+            }
+            
+            toggleTotalPriceChart() {
+                const container = document.getElementById('totalPriceChartContainer');
+                const button = document.getElementById('toggleTotalChart');
+                
+                if (container.classList.contains('active')) {
+                    container.classList.remove('active');
+                    button.textContent = '📈 チャート表示';
+                } else {
+                    container.classList.add('active');
+                    button.textContent = '📊 チャート非表示';
+                    this.loadTotalPriceChart();
+                }
+            }
+            
+            async loadTotalPriceChart() {
+                if (!this.isInitialized) return;
+                
+                try {
+                    const chartData = await this.fetchTotalPriceChartData(this.currentTotalInterval);
+                    if (chartData) {
+                        this.renderTotalPriceChart(chartData);
+                    }
+                } catch (error) {
+                    console.error('Error loading total price chart:', error);
+                }
+            }
+            
+            async fetchTotalPriceChartData(interval) {
+                const cacheKey = `total_price_${interval}`;
+                
+                if (this.chartDataCache.has(cacheKey)) {
+                    console.log(`Using cached total price data for ${interval}`);
+                    return this.chartDataCache.get(cacheKey);
+                }
+                
+                try {
+                    const url = `./data/price_history/total_price_${interval}.json`;
+                    console.log(`Fetching total price chart data from: ${url}`);
+                    
+                    const response = await fetch(url + '?v=' + Date.now());
+                    
+                    if (!response.ok) {
+                        console.warn(`Total price chart data not found for ${interval}, using sample data`);
+                        return this.getSampleTotalPriceChartData();
+                    }
+                    
+                    const chartData = await response.json();
+                    console.log(`Total price chart data loaded for ${interval}:`, chartData);
+                    
+                    if (!chartData || !chartData.labels || !chartData.datasets || chartData.datasets.length === 0) {
+                        console.warn(`Invalid total price chart data for ${interval}, using sample data`);
+                        return this.getSampleTotalPriceChartData();
+                    }
+                    
+                    this.chartDataCache.set(cacheKey, chartData);
+                    setTimeout(() => this.chartDataCache.delete(cacheKey), 300000);
+                    
+                    return chartData;
+                    
+                } catch (error) {
+                    console.error(`Error fetching total price chart data for ${interval}:`, error);
+                    return this.getSampleTotalPriceChartData();
+                }
+            }
+            
+            getSampleTotalPriceChartData() {
+                const now = new Date();
+                const labels = [];
+                const totalPrices = [];
+                const avgPrices = [];
+                
+                let baseTotal = 1000000000; // 10億NESO
+                let baseAvg = 4000000; // 400万NESO
+                
+                for (let i = 6; i >= 0; i--) {
+                    const time = new Date(now.getTime() - i * 4 * 60 * 60 * 1000);
+                    labels.push(time.toLocaleDateString('ja-JP', { month: '2-digit', day: '2-digit' }) + ' ' + 
+                              time.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }));
+                    
+                    const totalVariation = (Math.random() - 0.5) * 0.1;
+                    const totalPrice = Math.round(baseTotal * (1 + totalVariation));
+                    totalPrices.push(totalPrice);
+                    
+                    const avgVariation = (Math.random() - 0.5) * 0.2;
+                    const avgPrice = Math.round(baseAvg * (1 + avgVariation));
+                    avgPrices.push(avgPrice);
+                }
+                
+                return {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: `総価格 (${this.intervals[this.currentTotalInterval]})`,
+                            data: totalPrices,
+                            borderColor: '#e74c3c',
+                            backgroundColor: 'rgba(231, 76, 60, 0.1)',
+                            borderWidth: 3,
+                            fill: true,
+                            tension: 0.3,
+                            yAxisID: 'y'
+                        },
+                        {
+                            label: `平均価格 (${this.intervals[this.currentTotalInterval]})`,
+                            data: avgPrices,
+                            borderColor: '#3498db',
+                            backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                            borderWidth: 2,
+                            fill: false,
+                            tension: 0.3,
+                            yAxisID: 'y1'
+                        }
+                    ]
+                };
+            }
+            
+            renderTotalPriceChart(chartData) {
+                if (typeof Chart === 'undefined') {
+                    console.error('Chart.js not loaded');
+                    return;
+                }
+                
+                const canvas = document.getElementById('totalPriceChart');
+                if (!canvas) {
+                    console.error('Total price chart canvas not found');
+                    return;
+                }
+                
+                const ctx = canvas.getContext('2d');
+                
+                if (this.totalPriceChart) {
+                    this.totalPriceChart.destroy();
+                }
+                
+                try {
+                    this.totalPriceChart = new Chart(ctx, {
+                        type: 'line',
+                        data: chartData,
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: {
+                                    position: 'top',
+                                    labels: {
+                                        usePointStyle: true,
+                                        font: { size: 12 }
+                                    }
+                                },
+                                tooltip: {
+                                    mode: 'index',
+                                    intersect: false,
+                                    callbacks: {
+                                        label: function(context) {
+                                            const value = context.parsed.y;
+                                            if (context.datasetIndex === 0) {
+                                                return `${context.dataset.label}: ${(value / 1000000).toFixed(0)}M NESO`;
+                                            } else {
+                                                return `${context.dataset.label}: ${value.toLocaleString()} NESO`;
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            scales: {
+                                x: {
+                                    title: {
+                                        display: true,
+                                        text: `時間軸 (${this.intervals[this.currentTotalInterval]})`
+                                    },
+                                    ticks: {
+                                        font: { size: 10 },
+                                        maxTicksLimit: 8
+                                    }
+                                },
+                                y: {
+                                    type: 'linear',
+                                    display: true,
+                                    position: 'left',
+                                    title: {
+                                        display: true,
+                                        text: '総価格 (百万NESO)',
+                                        color: '#e74c3c'
+                                    },
+                                    ticks: {
+                                        callback: function(value) {
+                                            return (value / 1000000).toFixed(0) + 'M';
+                                        },
+                                        color: '#e74c3c'
+                                    },
+                                    grid: {
+                                        drawOnChartArea: false,
+                                    },
+                                },
+                                y1: {
+                                    type: 'linear',
+                                    display: true,
+                                    position: 'right',
+                                    title: {
+                                        display: true,
+                                        text: '平均価格 (NESO)',
+                                        color: '#3498db'
+                                    },
+                                    ticks: {
+                                        callback: function(value) {
+                                            if (value >= 1000000) {
+                                                return (value / 1000000).toFixed(1) + 'M';
+                                            } else if (value >= 1000) {
+                                                return (value / 1000).toFixed(0) + 'K';
+                                            }
+                                            return value.toString();
+                                        },
+                                        color: '#3498db'
+                                    },
+                                    grid: {
+                                        drawOnChartArea: false,
+                                    },
+                                }
+                            },
+                            interaction: {
+                                mode: 'index',
+                                intersect: false
+                            },
+                            animation: {
+                                duration: 500,
+                                easing: 'linear'
+                            }
+                        }
+                    });
+                    
+                    console.log(`Total price chart rendered with ${chartData.labels.length} data points`);
+                    
+                } catch (error) {
+                    console.error('Error rendering total price chart:', error);
+                }
+            }
+            
+            switchTotalInterval(interval, clickedTab) {
+                console.log(`Switching total price interval to: ${interval}`);
+                this.currentTotalInterval = interval;
+                
+                const tabContainer = clickedTab.parentElement;
+                tabContainer.querySelectorAll('.total-chart-interval-tab').forEach(tab => {
+                    tab.classList.toggle('active', tab.dataset.interval === interval);
+                });
+                
+                this.loadTotalPriceChart();
             }
             
             async showPriceChart(imageElement, mouseX, mouseY) {
@@ -1636,7 +2001,6 @@
                         return;
                     }
                     
-                    // ツールチップ位置調整
                     const tooltipWidth = 320;
                     const tooltipHeight = 220;
                     
@@ -1671,7 +2035,6 @@
             async fetchChartData(itemId, interval) {
                 const cacheKey = `${itemId}_${interval}`;
                 
-                // キャッシュから取得
                 if (this.chartDataCache.has(cacheKey)) {
                     console.log(`Using cached data for ${cacheKey}`);
                     return this.chartDataCache.get(cacheKey);
@@ -1691,13 +2054,11 @@
                     const chartData = await response.json();
                     console.log(`Chart data loaded for ${itemId}:`, chartData);
                     
-                    // データ検証
                     if (!chartData || !chartData.labels || !chartData.datasets || chartData.datasets.length === 0) {
                         console.warn(`Invalid chart data for ${itemId} (${interval}), using sample data`);
                         return this.getSampleChartData(itemId);
                     }
                     
-                    // キャッシュに保存（5分間）
                     this.chartDataCache.set(cacheKey, chartData);
                     setTimeout(() => this.chartDataCache.delete(cacheKey), 300000);
                     
@@ -1762,7 +2123,6 @@
                 }
                 
                 try {
-                    // CSP対応のChart.js設定（evalを使わない）
                     this.miniChart = new Chart(ctx, {
                         type: 'line',
                         data: chartData,
@@ -1813,7 +2173,6 @@
                             },
                             animation: { 
                                 duration: 300,
-                                // CSP対応：evalを使わない設定
                                 easing: 'linear'
                             }
                         }
@@ -1830,13 +2189,11 @@
                 console.log(`Switching interval to: ${interval}`);
                 this.currentInterval = interval;
                 
-                // タブの更新
                 const tabContainer = clickedTab.parentElement;
                 tabContainer.querySelectorAll('.chart-interval-tab').forEach(tab => {
                     tab.classList.toggle('active', tab.dataset.interval === interval);
                 });
                 
-                // 現在表示中のチャートがある場合は再描画
                 const tooltip = document.getElementById('priceChartTooltip');
                 if (this.miniChart && tooltip && tooltip.style.display === 'block') {
                     const currentItem = document.querySelector('.item-image[data-item-id]');
@@ -1848,6 +2205,16 @@
                             });
                         }
                     }
+                }
+            }
+            
+            toggleDualAxisMode() {
+                this.dualAxisMode = !this.dualAxisMode;
+                console.log(`Dual axis mode: ${this.dualAxisMode ? 'enabled' : 'disabled'}`);
+                
+                const overlay = document.getElementById('comparisonOverlay');
+                if (overlay && overlay.style.display === 'flex') {
+                    this.renderComparisonChart();
                 }
             }
             
@@ -1898,6 +2265,7 @@
                         return;
                     }
                     
+                    // 縦軸分離モードの処理
                     const comparisonData = {
                         labels: dataA.labels.length >= dataB.labels.length ? dataA.labels : dataB.labels,
                         datasets: [
@@ -1908,7 +2276,8 @@
                                 backgroundColor: 'rgba(40, 167, 69, 0.1)',
                                 borderWidth: 2,
                                 fill: false,
-                                tension: 0.3
+                                tension: 0.3,
+                                yAxisID: this.dualAxisMode ? 'y' : 'y'
                             },
                             {
                                 label: `${itemB.item_name} (セットB)`,
@@ -1917,10 +2286,90 @@
                                 backgroundColor: 'rgba(255, 193, 7, 0.1)',
                                 borderWidth: 2,
                                 fill: false,
-                                tension: 0.3
+                                tension: 0.3,
+                                yAxisID: this.dualAxisMode ? 'y1' : 'y'
                             }
                         ]
                     };
+                    
+                    // 縦軸設定
+                    const scalesConfig = {
+                        x: {
+                            title: {
+                                display: true,
+                                text: `時間軸 (${this.intervals[this.currentInterval]})`
+                            }
+                        }
+                    };
+                    
+                    if (this.dualAxisMode) {
+                        scalesConfig.y = {
+                            type: 'linear',
+                            display: true,
+                            position: 'left',
+                            title: {
+                                display: true,
+                                text: `${itemA.item_name} 価格 (NESO)`,
+                                color: '#28a745'
+                            },
+                            ticks: {
+                                callback: function(value) {
+                                    if (value >= 1000000) {
+                                        return (value / 1000000).toFixed(1) + 'M';
+                                    } else if (value >= 1000) {
+                                        return (value / 1000).toFixed(0) + 'K';
+                                    }
+                                    return value.toString();
+                                },
+                                color: '#28a745'
+                            },
+                            grid: {
+                                drawOnChartArea: false,
+                            },
+                        };
+                        
+                        scalesConfig.y1 = {
+                            type: 'linear',
+                            display: true,
+                            position: 'right',
+                            title: {
+                                display: true,
+                                text: `${itemB.item_name} 価格 (NESO)`,
+                                color: '#ffc107'
+                            },
+                            ticks: {
+                                callback: function(value) {
+                                    if (value >= 1000000) {
+                                        return (value / 1000000).toFixed(1) + 'M';
+                                    } else if (value >= 1000) {
+                                        return (value / 1000).toFixed(0) + 'K';
+                                    }
+                                    return value.toString();
+                                },
+                                color: '#ffc107'
+                            },
+                            grid: {
+                                drawOnChartArea: false,
+                            },
+                        };
+                    } else {
+                        scalesConfig.y = {
+                            title: {
+                                display: true,
+                                text: '価格 (NESO)'
+                            },
+                            ticks: {
+                                callback: function(value) {
+                                    if (value >= 1000000) {
+                                        return (value / 1000000).toFixed(1) + 'M';
+                                    } else if (value >= 1000) {
+                                        return (value / 1000).toFixed(0) + 'K';
+                                    }
+                                    return value.toString();
+                                }
+                            }
+                        };
+                    }
                     
                     this.comparisonChart = new Chart(ctx, {
                         type: 'line',
@@ -1945,37 +2394,14 @@
                                     }
                                 }
                             },
-                            scales: {
-                                x: {
-                                    title: {
-                                        display: true,
-                                        text: `時間軸 (${this.intervals[this.currentInterval]})`
-                                    }
-                                },
-                                y: {
-                                    title: {
-                                        display: true,
-                                        text: '価格 (NESO)'
-                                    },
-                                    ticks: {
-                                        callback: function(value) {
-                                            if (value >= 1000000) {
-                                                return (value / 1000000).toFixed(1) + 'M';
-                                            } else if (value >= 1000) {
-                                                return (value / 1000).toFixed(0) + 'K';
-                                            }
-                                            return value.toString();
-                                        }
-                                    }
-                                }
-                            },
+                            scales: scalesConfig,
                             interaction: {
                                 mode: 'index',
                                 intersect: false
                             },
                             animation: { 
                                 duration: 300,
-                                easing: 'linear' // CSP対応
+                                easing: 'linear'
                             }
                         }
                     });
@@ -2039,18 +2465,16 @@
             }
         }
         
-        // アプリケーション初期化（CSP・ストレージ制限対応版）
+        // アプリケーション初期化
         let tracker;
         let chartManager;
         
         document.addEventListener('DOMContentLoaded', function() {
             console.log('DOM loaded, initializing systems...');
             
-            // 基本システムを優先して初期化
             tracker = new MapleStoryPriceTracker();
             window.tracker = tracker;
             
-            // チャートマネージャーを初期化（Chart.js読み込み待ち内包）
             chartManager = new PriceChartManager();
             window.chartManager = chartManager;
         });
