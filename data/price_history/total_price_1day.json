@@ -1,12 +1,12 @@
 {
   "labels": [
-    "06/15"
+    "06/16"
   ],
   "datasets": [
     {
       "label": "総価格 (1年分（1日毎）)",
       "data": [
-        1284819309
+        1276951883
       ],
       "borderColor": "#e74c3c",
       "backgroundColor": "rgba(231, 76, 60, 0.1)",
@@ -18,7 +18,7 @@
     {
       "label": "平均価格 (1年分（1日毎）)",
       "data": [
-        4621652
+        4593352
       ],
       "borderColor": "#3498db",
       "backgroundColor": "rgba(52, 152, 219, 0.1)",
