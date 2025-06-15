@@ -39,34 +39,64 @@ class HistoricalPriceTracker:
         
         # 各アイテムの価格履歴を管理するディクショナリ
         self.price_history = {}
-        # 新規追加：総価格履歴を管理
+        # 修正：総価格履歴を管理（初期化を明確化）
         self.total_price_history = {}
         
+        # 修正：初期化順序を変更
+        self.initialize_total_price_history()
         self.load_existing_history()
+
+    def initialize_total_price_history(self):
+        """総価格履歴を初期化"""
+        for interval_type in self.price_intervals:
+            self.total_price_history[interval_type] = deque(
+                maxlen=self.price_intervals[interval_type]['maxlen']
+            )
+        logger.info("総価格履歴を初期化しました")
 
     def load_existing_history(self):
         """既存の価格履歴を読み込み"""
         try:
             total_records = 0
+            # 個別アイテム履歴読み込み
             for interval_type in self.price_intervals:
                 history_file = os.path.join(self.history_dir, f"history_{interval_type}.json")
                 if os.path.exists(history_file):
                     with open(history_file, 'r', encoding='utf-8') as f:
-                        data = json.load(f)
-                        item_count = len(data)
-                        for item_id, history in data.items():
-                            if item_id not in self.price_history:
-                                self.price_history[item_id] = {}
+                        try:
+                            data = json.load(f)
+                            # 修正：データ型確認（検索結果[4]のTypeError対策）
+                            if isinstance(data, str):
+                                logger.warn(f"データが文字列型です、JSON変換を試行: {interval_type}")
+                                data = json.loads(data)
                             
-                            # dequeに変換して最大長を適用
-                            self.price_history[item_id][interval_type] = deque(
-                                history, 
-                                maxlen=self.price_intervals[interval_type]['maxlen']
-                            )
-                            total_records += len(history)
-                        logger.info(f"{interval_type} 履歴ファイル読み込み: {item_count}アイテム")
+                            if not isinstance(data, dict):
+                                logger.error(f"履歴データが辞書型ではありません: {interval_type}")
+                                continue
+                                
+                            item_count = len(data)
+                            for item_id, history in data.items():
+                                if item_id not in self.price_history:
+                                    self.price_history[item_id] = {}
+                                
+                                # 修正：履歴データの型確認
+                                if not isinstance(history, list):
+                                    logger.warn(f"アイテム{item_id}の履歴が配列ではありません")
+                                    continue
+                                
+                                # dequeに変換して最大長を適用
+                                self.price_history[item_id][interval_type] = deque(
+                                    history, 
+                                    maxlen=self.price_intervals[interval_type]['maxlen']
+                                )
+                                total_records += len(history)
+                            logger.info(f"{interval_type} 履歴ファイル読み込み: {item_count}アイテム")
+                        except json.JSONDecodeError as e:
+                            logger.error(f"JSON読み込みエラー {interval_type}: {e}")
+                        except Exception as e:
+                            logger.error(f"履歴読み込みエラー {interval_type}: {e}")
             
-            # 新規追加：総価格履歴を読み込み
+            # 修正：総価格履歴を読み込み
             self.load_total_price_history()
             
             logger.info(f"価格履歴読み込み完了: {len(self.price_history)}アイテム、{total_records}レコード")
@@ -74,41 +104,48 @@ class HistoricalPriceTracker:
             logger.error(f"価格履歴読み込みエラー: {e}")
 
     def load_total_price_history(self):
-        """総価格履歴を読み込み"""
+        """総価格履歴を読み込み（修正版）"""
         try:
             for interval_type in self.price_intervals:
                 total_file = os.path.join(self.history_dir, f"total_price_{interval_type}.json")
                 if os.path.exists(total_file):
                     with open(total_file, 'r', encoding='utf-8') as f:
-                        data = json.load(f)
-                        # データ構造検証
-                        if isinstance(data, list) and len(data) > 0:
-                            if isinstance(data[0], dict) and 'timestamp' in data[0]:
-                                self.total_price_history[interval_type] = deque(
-                                    data, 
-                                    maxlen=self.price_intervals[interval_type]['maxlen']
-                                )
-                                logger.info(f"総価格履歴読み込み {interval_type}: {len(data)}レコード")
+                        try:
+                            data = json.load(f)
+                            
+                            # 修正：データ型確認（検索結果[4]のTypeError対策）
+                            if isinstance(data, str):
+                                logger.warn(f"総価格データが文字列型です、JSON変換を試行: {interval_type}")
+                                data = json.loads(data)
+                            
+                            # データ構造検証を強化
+                            if isinstance(data, list) and len(data) > 0:
+                                # 各要素が辞書かつtimestampキーを持つかチェック
+                                valid_data = []
+                                for point in data:
+                                    if isinstance(point, dict) and 'timestamp' in point and 'total_price' in point:
+                                        valid_data.append(point)
+                                    else:
+                                        logger.warn(f"無効な総価格データポイント: {point}")
+                                
+                                if valid_data:
+                                    self.total_price_history[interval_type] = deque(
+                                        valid_data, 
+                                        maxlen=self.price_intervals[interval_type]['maxlen']
+                                    )
+                                    logger.info(f"総価格履歴読み込み {interval_type}: {len(valid_data)}レコード")
+                                else:
+                                    logger.warn(f"有効な総価格データがありません {interval_type}: 初期化します")
                             else:
-                                logger.warn(f"総価格履歴データ構造不正 {interval_type}: 初期化します")
-                                self.total_price_history[interval_type] = deque(
-                                    maxlen=self.price_intervals[interval_type]['maxlen']
-                                )
-                        else:
-                            self.total_price_history[interval_type] = deque(
-                                maxlen=self.price_intervals[interval_type]['maxlen']
-                            )
+                                logger.info(f"総価格履歴ファイルが空または無効 {interval_type}: 初期化します")
+                        except json.JSONDecodeError as e:
+                            logger.error(f"総価格履歴JSON読み込みエラー {interval_type}: {e}")
+                        except Exception as e:
+                            logger.error(f"総価格履歴読み込みエラー {interval_type}: {e}")
                 else:
-                    self.total_price_history[interval_type] = deque(
-                        maxlen=self.price_intervals[interval_type]['maxlen']
-                    )
+                    logger.info(f"総価格履歴ファイルが存在しません {interval_type}: 新規作成されます")
         except Exception as e:
             logger.error(f"総価格履歴読み込みエラー: {e}")
-            # エラー時は空のdequeで初期化
-            for interval_type in self.price_intervals:
-                self.total_price_history[interval_type] = deque(
-                    maxlen=self.price_intervals[interval_type]['maxlen']
-                )
 
     def save_history_to_files(self):
         """価格履歴を間隔別ファイルに保存（現在のJSONとは別管理）"""
@@ -126,12 +163,20 @@ class HistoricalPriceTracker:
                 with open(history_file, 'w', encoding='utf-8') as f:
                     json.dump(interval_data, f, ensure_ascii=False, indent=2)
                 
-                # 新規追加：総価格履歴保存
+                # 修正：総価格履歴保存（データ検証追加）
                 total_file = os.path.join(self.history_dir, f"total_price_{interval_type}.json")
                 if interval_type in self.total_price_history:
                     total_data = list(self.total_price_history[interval_type])
+                    # 修正：データ検証
+                    valid_total_data = []
+                    for point in total_data:
+                        if isinstance(point, dict) and 'timestamp' in point and 'total_price' in point:
+                            valid_total_data.append(point)
+                    
                     with open(total_file, 'w', encoding='utf-8') as f:
-                        json.dump(total_data, f, ensure_ascii=False, indent=2)
+                        json.dump(valid_total_data, f, ensure_ascii=False, indent=2)
+                    
+                    logger.info(f"総価格履歴保存 {interval_type}: {len(valid_total_data)}ポイント")
                 
                 logger.info(f"{interval_type} 履歴保存完了: {len(interval_data)}アイテム")
         except Exception as e:
@@ -149,15 +194,23 @@ class HistoricalPriceTracker:
         if not history:
             return True
         
-        last_entry = history[-1]
-        last_time = datetime.fromisoformat(last_entry['timestamp'].replace('Z', '+00:00'))
-        now = datetime.now()
-        
-        required_interval = self.price_intervals[interval_type]['interval']
-        return now - last_time >= required_interval
+        try:
+            last_entry = history[-1]
+            if not isinstance(last_entry, dict) or 'timestamp' not in last_entry:
+                logger.warn(f"アイテム{item_id}の履歴データ構造不正")
+                return True
+                
+            last_time = datetime.fromisoformat(last_entry['timestamp'].replace('Z', '+00:00'))
+            now = datetime.now()
+            
+            required_interval = self.price_intervals[interval_type]['interval']
+            return now - last_time >= required_interval
+        except Exception as e:
+            logger.error(f"間隔更新チェックエラー ({item_id}, {interval_type}): {e}")
+            return True
 
     def should_update_total_price_interval(self, interval_type):
-        """総価格の指定間隔での更新が必要かチェック"""
+        """総価格の指定間隔での更新が必要かチェック（修正版）"""
         if interval_type not in self.total_price_history:
             return True
         
@@ -165,23 +218,36 @@ class HistoricalPriceTracker:
         if not history:
             return True
         
-        last_entry = history[-1]
-        if not isinstance(last_entry, dict) or 'timestamp' not in last_entry:
-            logger.warn(f"総価格履歴データ構造不正 {interval_type}: 更新が必要")
-            return True
+        try:
+            last_entry = history[-1]
+            if not isinstance(last_entry, dict) or 'timestamp' not in last_entry:
+                logger.warn(f"総価格履歴データ構造不正 {interval_type}: 更新が必要")
+                return True
+                
+            last_time = datetime.fromisoformat(last_entry['timestamp'].replace('Z', '+00:00'))
+            now = datetime.now()
             
-        last_time = datetime.fromisoformat(last_entry['timestamp'].replace('Z', '+00:00'))
-        now = datetime.now()
-        
-        required_interval = self.price_intervals[interval_type]['interval']
-        return now - last_time >= required_interval
+            required_interval = self.price_intervals[interval_type]['interval']
+            return now - last_time >= required_interval
+        except Exception as e:
+            logger.error(f"総価格間隔更新チェックエラー ({interval_type}): {e}")
+            return True
 
     def calculate_total_price(self, current_data):
-        """現在のデータから総価格を計算"""
+        """現在のデータから総価格を計算（修正版）"""
         total_price = 0
         valid_items = 0
         
         try:
+            # 修正：データ型確認
+            if isinstance(current_data, str):
+                logger.warn("current_dataが文字列型です、JSON変換を試行")
+                current_data = json.loads(current_data)
+            
+            if not isinstance(current_data, dict):
+                logger.error(f"current_dataが辞書型ではありません: {type(current_data)}")
+                return 0, 0
+            
             for item_id, item_data in current_data.items():
                 if not item_data or not isinstance(item_data, dict):
                     continue
@@ -195,7 +261,8 @@ class HistoricalPriceTracker:
                     if current_price > 0:
                         total_price += current_price
                         valid_items += 1
-                except (ValueError, TypeError):
+                except (ValueError, TypeError) as e:
+                    logger.debug(f"価格変換エラー ({item_id}): {price_str} -> {e}")
                     continue
         except Exception as e:
             logger.error(f"総価格計算エラー: {e}")
@@ -231,7 +298,7 @@ class HistoricalPriceTracker:
         return updated_intervals
 
     def update_total_price_history(self, total_price, valid_items):
-        """総価格履歴を更新"""
+        """総価格履歴を更新（修正版）"""
         timestamp = datetime.now().isoformat()
         total_price_point = {
             'timestamp': timestamp,
@@ -256,7 +323,7 @@ class HistoricalPriceTracker:
         return updated_intervals
 
     def update_from_current_prices(self):
-        """現在の価格JSONから履歴を更新"""
+        """現在の価格JSONから履歴を更新（修正版）"""
         try:
             # ファイル存在チェック
             if not os.path.exists(self.json_file_path):
@@ -265,6 +332,15 @@ class HistoricalPriceTracker:
             
             with open(self.json_file_path, 'r', encoding='utf-8') as f:
                 current_data = json.load(f)
+            
+            # 修正：データ型確認（検索結果[4]のTypeError対策）
+            if isinstance(current_data, str):
+                logger.warn("価格データが文字列型です、JSON変換を試行")
+                current_data = json.loads(current_data)
+            
+            if not isinstance(current_data, dict):
+                logger.error(f"価格データが辞書型ではありません: {type(current_data)}")
+                return 0
             
             logger.info(f"現在の価格データ読み込み: {len(current_data)}アイテム")
             
@@ -298,7 +374,7 @@ class HistoricalPriceTracker:
                     logger.debug(f"価格変換エラー ({item_id}): {price_str} -> {e}")
                     continue
             
-            # 新規追加：総価格履歴更新
+            # 修正：総価格履歴更新
             total_price, valid_items = self.calculate_total_price(current_data)
             total_intervals = self.update_total_price_history(total_price, valid_items)
             
@@ -362,19 +438,27 @@ class HistoricalPriceTracker:
         }
 
     def generate_total_price_chart_data(self, interval='1hour'):
-        """総価格チャート用のデータを生成"""
+        """総価格チャート用のデータを生成（修正版）"""
         if interval not in self.total_price_history:
+            logger.warn(f"総価格履歴に{interval}が存在しません")
             return None
         
         history = list(self.total_price_history[interval])
         if not history:
+            logger.warn(f"総価格履歴{interval}が空です")
             return None
         
-        # データ構造の検証
+        # 修正：データ構造の検証を強化
+        valid_points = []
         for point in history:
-            if not isinstance(point, dict) or 'timestamp' not in point:
-                logger.error(f"総価格履歴データ構造不正: {point}")
-                return None
+            if isinstance(point, dict) and 'timestamp' in point and 'total_price' in point and 'average_price' in point:
+                valid_points.append(point)
+            else:
+                logger.warn(f"総価格履歴データ構造不正: {point}")
+        
+        if not valid_points:
+            logger.error(f"有効な総価格履歴データがありません ({interval})")
+            return None
         
         # 時刻フォーマットを間隔に応じて調整
         def format_time(timestamp_str):
@@ -391,12 +475,12 @@ class HistoricalPriceTracker:
                 return timestamp_str
         
         try:
-            return {
-                'labels': [format_time(point['timestamp']) for point in history],
+            chart_data = {
+                'labels': [format_time(point['timestamp']) for point in valid_points],
                 'datasets': [
                     {
                         'label': f'総価格 ({self.price_intervals[interval]["description"]})',
-                        'data': [point['total_price'] for point in history],
+                        'data': [point['total_price'] for point in valid_points],
                         'borderColor': '#e74c3c',
                         'backgroundColor': 'rgba(231, 76, 60, 0.1)',
                         'borderWidth': 3,
@@ -406,7 +490,7 @@ class HistoricalPriceTracker:
                     },
                     {
                         'label': f'平均価格 ({self.price_intervals[interval]["description"]})',
-                        'data': [point['average_price'] for point in history],
+                        'data': [point['average_price'] for point in valid_points],
                         'borderColor': '#3498db',
                         'backgroundColor': 'rgba(52, 152, 219, 0.1)',
                         'borderWidth': 2,
@@ -416,6 +500,8 @@ class HistoricalPriceTracker:
                     }
                 ]
             }
+            logger.info(f"総価格チャートデータ生成完了 {interval}: {len(valid_points)}ポイント")
+            return chart_data
         except Exception as e:
             logger.error(f"総価格チャートデータ生成エラー: {e}")
             return None
@@ -436,7 +522,7 @@ class HistoricalPriceTracker:
             return False
 
     def export_total_price_chart_data_for_web(self, interval='1hour'):
-        """総価格チャートデータをWeb用に出力"""
+        """総価格チャートデータをWeb用に出力（修正版）"""
         chart_data = self.generate_total_price_chart_data(interval)
         if not chart_data:
             logger.warn(f"総価格チャートデータが生成できませんでした ({interval})")
@@ -453,7 +539,7 @@ class HistoricalPriceTracker:
             return False
 
     def get_statistics(self):
-        """履歴統計情報を取得"""
+        """履歴統計情報を取得（修正版）"""
         stats = {
             'total_items': len(self.price_history),
             'intervals': {},
@@ -473,11 +559,16 @@ class HistoricalPriceTracker:
                 'max_points': config['maxlen']
             }
             
-            # 総価格統計
+            # 修正：総価格統計
             if interval_type in self.total_price_history:
                 total_price_points = len(self.total_price_history[interval_type])
                 stats['total_price_intervals'][interval_type] = {
                     'total_price_points': total_price_points,
+                    'description': config['description']
+                }
+            else:
+                stats['total_price_intervals'][interval_type] = {
+                    'total_price_points': 0,
                     'description': config['description']
                 }
         
@@ -497,11 +588,13 @@ def main():
         # 現在の価格データから履歴更新
         updated = tracker.update_from_current_prices()
         
-        # 新規追加：総価格チャートデータの出力
+        # 修正：総価格チャートデータの出力（エラーハンドリング強化）
         for interval in ['1hour', '12hour', '1day']:
             try:
                 success = tracker.export_total_price_chart_data_for_web(interval)
-                if not success:
+                if success:
+                    logger.info(f"総価格チャートデータ出力成功: {interval}")
+                else:
                     logger.warn(f"総価格チャートデータ出力失敗: {interval}")
             except Exception as e:
                 logger.error(f"総価格チャートデータ出力エラー ({interval}): {e}")
