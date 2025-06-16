@@ -213,6 +213,81 @@ class TotalPriceAggregator:
         except Exception as e:
             logger.error(f"総価格履歴保存エラー: {e}")
 
+    def load_existing_chart_data(self, interval):
+        """既存のチャートデータを読み込み（修正版：データ蓄積対応）"""
+        chart_file = os.path.join(self.history_dir, f"total_price_{interval}.json")
+        
+        if not os.path.exists(chart_file):
+            logger.info(f"チャートファイルが存在しません: {chart_file}")
+            return None
+        
+        try:
+            with open(chart_file, 'r', encoding='utf-8') as f:
+                existing_chart_data = json.load(f)
+            
+            # チャートデータの構造確認
+            if (isinstance(existing_chart_data, dict) and 
+                'labels' in existing_chart_data and 
+                'datasets' in existing_chart_data):
+                logger.info(f"既存チャートデータ読み込み成功 {interval}: {len(existing_chart_data['labels'])}ポイント")
+                return existing_chart_data
+            else:
+                logger.warn(f"既存チャートデータの構造が不正: {interval}")
+                return None
+                
+        except json.JSONDecodeError as e:
+            logger.error(f"チャートファイル読み込みエラー {interval}: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"チャートデータ読み込みエラー {interval}: {e}")
+            return None
+
+    def append_new_data_to_chart(self, existing_chart_data, new_data_point, interval):
+        """既存のチャートデータに新しいデータポイントを追加（修正版：データ蓄積対応）"""
+        try:
+            # 新しいデータポイントを解析
+            timestamp = new_data_point['timestamp']
+            total_price = new_data_point['total_price']
+            average_price = new_data_point['average_price']
+            
+            # 時刻フォーマット
+            def format_time(timestamp_str):
+                try:
+                    timestamp_obj = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+                    if interval == '1hour':
+                        return timestamp_obj.strftime('%m/%d %H:%M')
+                    elif interval == '12hour':
+                        return timestamp_obj.strftime('%m/%d %H:%M')
+                    else:  # 1day
+                        return timestamp_obj.strftime('%m/%d')
+                except Exception as e:
+                    logger.error(f"時刻フォーマットエラー: {timestamp_str} -> {e}")
+                    return timestamp_str
+            
+            formatted_time = format_time(timestamp)
+            
+            # 既存データに追加
+            existing_chart_data['labels'].append(formatted_time)
+            existing_chart_data['datasets'][0]['data'].append(total_price)  # 総価格
+            existing_chart_data['datasets'][1]['data'].append(average_price)  # 平均価格
+            
+            # maxlenに基づいて古いデータを削除
+            max_points = self.price_intervals[interval]['maxlen']
+            
+            if len(existing_chart_data['labels']) > max_points:
+                # 古いデータから削除
+                remove_count = len(existing_chart_data['labels']) - max_points
+                existing_chart_data['labels'] = existing_chart_data['labels'][remove_count:]
+                existing_chart_data['datasets'][0]['data'] = existing_chart_data['datasets'][0]['data'][remove_count:]
+                existing_chart_data['datasets'][1]['data'] = existing_chart_data['datasets'][1]['data'][remove_count:]
+            
+            logger.info(f"チャートデータ追加完了 {interval}: {len(existing_chart_data['labels'])}ポイント")
+            return existing_chart_data
+            
+        except Exception as e:
+            logger.error(f"チャートデータ追加エラー {interval}: {e}")
+            return existing_chart_data
+
     def generate_total_price_chart_data(self, interval='1hour'):
         """総価格チャート用のデータを生成"""
         if interval not in self.total_price_history:
@@ -285,18 +360,43 @@ class TotalPriceAggregator:
             return None
 
     def export_total_price_chart_data_for_web(self, interval='1hour'):
-        """総価格チャートデータをWeb用に出力"""
-        chart_data = self.generate_total_price_chart_data(interval)
-        if not chart_data:
-            logger.warn(f"総価格チャートデータが生成できませんでした ({interval})")
-            return False
-        
+        """総価格チャートデータをWeb用に出力（修正版：データ蓄積対応）"""
         try:
+            # 新しいデータポイントを取得
+            if interval not in self.total_price_history or not self.total_price_history[interval]:
+                logger.warn(f"総価格履歴データがありません ({interval})")
+                return False
+            
+            # 最新のデータポイント
+            latest_data_point = self.total_price_history[interval][-1]
+            
+            # 既存のチャートデータを読み込み
+            existing_chart_data = self.load_existing_chart_data(interval)
+            
+            if existing_chart_data:
+                # 既存データに新しいポイントを追加
+                updated_chart_data = self.append_new_data_to_chart(
+                    existing_chart_data, 
+                    latest_data_point, 
+                    interval
+                )
+            else:
+                # 既存データがない場合は新規作成
+                logger.info(f"新規チャートデータ作成: {interval}")
+                updated_chart_data = self.generate_total_price_chart_data(interval)
+            
+            if not updated_chart_data:
+                logger.warn(f"総価格チャートデータが生成できませんでした ({interval})")
+                return False
+            
+            # ファイルに保存
             chart_file = os.path.join(self.history_dir, f"total_price_{interval}.json")
             with open(chart_file, 'w', encoding='utf-8') as f:
-                json.dump(chart_data, f, ensure_ascii=False, indent=2)
-            logger.info(f"総価格チャートデータ出力完了: {chart_file}")
+                json.dump(updated_chart_data, f, ensure_ascii=False, indent=2)
+            
+            logger.info(f"総価格チャートデータ出力完了: {chart_file} ({len(updated_chart_data['labels'])}ポイント)")
             return True
+            
         except Exception as e:
             logger.error(f"総価格チャートデータ出力エラー ({interval}): {e}")
             return False
@@ -314,7 +414,7 @@ class TotalPriceAggregator:
                 # ファイルに保存
                 self.save_total_price_history_to_files()
                 
-                # Web用チャートデータ出力
+                # Web用チャートデータ出力（データ蓄積対応）
                 for interval in ['1hour', '12hour', '1day']:
                     try:
                         success = self.export_total_price_chart_data_for_web(interval)
@@ -357,9 +457,9 @@ class TotalPriceAggregator:
         return stats
 
 def main():
-    """メイン実行：総価格集計処理"""
+    """メイン実行：総価格集計処理（データ蓄積対応）"""
     logger.info("=" * 50)
-    logger.info("MapleStory総価格集計処理開始")
+    logger.info("MapleStory総価格集計処理開始（データ蓄積対応）")
     logger.info("=" * 50)
     
     try:
@@ -377,7 +477,7 @@ def main():
             logger.info(f"  {interval}: {data['total_price_points']}ポイント ({data['description']})")
         
         logger.info("=" * 50)
-        logger.info(f"✅ 総価格集計完了: {updated}間隔更新")
+        logger.info(f"✅ 総価格集計完了: {updated}間隔更新（データ蓄積対応）")
         logger.info("=" * 50)
         
         return updated
