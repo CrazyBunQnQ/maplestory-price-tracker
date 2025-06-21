@@ -1004,6 +1004,11 @@
       "timestamp": "2025-06-21T06:52:36.645115",
       "price": 149000000,
       "item_name": "Fafnir Moon Glaive"
+    },
+    {
+      "timestamp": "2025-06-21T18:54:39.364790",
+      "price": 149000000,
+      "item_name": "Fafnir Moon Glaive"
     }
   ],
   "1482168": [
@@ -1089,6 +1094,11 @@
     },
     {
       "timestamp": "2025-06-21T06:52:36.645267",
+      "price": 150000000,
+      "item_name": "Fafnir Perry Talon"
+    },
+    {
+      "timestamp": "2025-06-21T18:54:39.364974",
       "price": 150000000,
       "item_name": "Fafnir Perry Talon"
     }
@@ -25528,6 +25538,13 @@
       "timestamp": "2025-06-21T14:32:32.829473",
       "price": 24900000,
       "item_name": "Fafnir Brionak"
+    }
+  ],
+  "1462193": [
+    {
+      "timestamp": "2025-06-21T18:54:39.364736",
+      "price": 23000000,
+      "item_name": "Fafnir Windwing Shooter"
     }
   ]
 }
