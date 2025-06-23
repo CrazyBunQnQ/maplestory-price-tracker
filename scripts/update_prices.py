@@ -49,6 +49,7 @@ class GitHubActionsUpdater:
         # IQR法の設定
         self.iqr_multiplier = 1.5  # IQR法の倍率（標準的な値）
         self.minimum_data_points = 4  # IQR法適用に必要な最小データ数
+        self.minimum_price_threshold = 10000  # 事前除外する最低価格閾値
         
         # 全件処理か制限処理かを判定
         if self.target_items_input.upper() == 'ALL':
@@ -148,7 +149,7 @@ class GitHubActionsUpdater:
             raise Exception(f"検索エラー: {equipment_name}, {e}")
 
     def extract_prices(self, driver):
-        """最新の価格情報5件を抽出"""
+        """最新の価格情報を抽出（10,000以下除外 + 5件取得）"""
         try:
             price_elements = driver.find_elements(
                 By.CSS_SELECTOR,
@@ -158,8 +159,9 @@ class GitHubActionsUpdater:
             if not price_elements:
                 return []
 
-            prices = []
-            for element in price_elements[:5]:
+            # 全価格を取得
+            all_prices = []
+            for element in price_elements:
                 try:
                     price_text = driver.execute_script(
                         "return arguments[0].textContent || arguments[0].innerText || '';",
@@ -172,13 +174,29 @@ class GitHubActionsUpdater:
                             price_str = price_match.group().replace(',', '')
                             if price_str.isdigit():
                                 price = int(price_str)
-                                prices.append(price)
+                                all_prices.append(price)
                 except Exception:
                     continue
 
-            prices.sort()
-            logger.info(f"最新5件から取得した価格: {[f'{p:,}' for p in prices]}")
-            return prices
+            # 10,000以下の価格を除外
+            filtered_prices = [price for price in all_prices if price > self.minimum_price_threshold]
+            
+            # ログ出力
+            excluded_count = len(all_prices) - len(filtered_prices)
+            if excluded_count > 0:
+                excluded_prices = [price for price in all_prices if price <= self.minimum_price_threshold]
+                logger.info(f"{self.minimum_price_threshold:,}以下の価格を{excluded_count}件除外: {[f'{p:,}' for p in excluded_prices]}")
+            
+            # 5件まで取得（昇順でソート）
+            filtered_prices.sort()
+            final_prices = filtered_prices[:5]
+            
+            logger.info(f"フィルタリング後の価格（5件まで）: {[f'{p:,}' for p in final_prices]}")
+            
+            if len(final_prices) < 5:
+                logger.warning(f"取得できた価格が{len(final_prices)}件のみです（目標5件）")
+                
+            return final_prices
 
         except Exception as e:
             raise Exception(f"価格抽出エラー: {e}")
@@ -196,7 +214,7 @@ class GitHubActionsUpdater:
             return None
 
     def detect_outliers_iqr(self, prices):
-        """IQR法による外れ値検出"""
+        """IQR法による外れ値検出（事前フィルタリング済みデータ用）"""
         if len(prices) < self.minimum_data_points:
             logger.info(f"データ数不足（{len(prices)}件）: IQR法をスキップ")
             return [], prices
@@ -208,6 +226,11 @@ class GitHubActionsUpdater:
         Q1 = np.percentile(prices_array, 25)
         Q3 = np.percentile(prices_array, 75)
         IQR = Q3 - Q1
+        
+        # IQRが0の場合（全ての値が同じ）の対処
+        if IQR == 0:
+            logger.info("IQR=0（全価格が同一）: 外れ値なしと判定")
+            return [], prices
         
         # 外れ値の境界を計算
         lower_bound = Q1 - self.iqr_multiplier * IQR
@@ -223,29 +246,29 @@ class GitHubActionsUpdater:
             else:
                 normal_prices.append(price)
         
-        logger.info(f"IQR統計: Q1={Q1:,.0f}, Q3={Q3:,.0f}, IQR={IQR:,.0f}")
+        logger.info(f"IQR統計（事前フィルタリング済み）: Q1={Q1:,.0f}, Q3={Q3:,.0f}, IQR={IQR:,.0f}")
         logger.info(f"外れ値境界: {lower_bound:,.0f} - {upper_bound:,.0f}")
         logger.info(f"外れ値{len(outliers)}件, 正常値{len(normal_prices)}件")
         
         return outliers, normal_prices
 
     def select_optimal_price(self, prices, previous_price):
-        """IQR法による外れ値除去後、最安値を選定"""
+        """二段階フィルタリング（事前除外 + IQR法）による最安値選定"""
         if not prices:
             return None, "価格データなし"
 
-        logger.info(f"取得した最新5件の価格: {[f'{p:,}' for p in prices]}")
+        logger.info(f"事前フィルタリング済み価格（5件まで）: {[f'{p:,}' for p in prices]}")
         
         if previous_price:
             logger.info(f"前回価格: {previous_price:,}")
         else:
             logger.info("前回価格: 未取得")
 
-        # IQR法による外れ値検出
+        # IQR法による外れ値検出（事前フィルタリング済みデータに対して）
         outliers, normal_prices = self.detect_outliers_iqr(prices)
         
         # 結果をログ出力
-        logger.info("IQR法による外れ値検出結果:")
+        logger.info("IQR法による外れ値検出結果（事前フィルタリング済み）:")
         for price in prices:
             if price in outliers:
                 logger.info(f"  ❌ {price:,} NESO: 外れ値")
@@ -256,12 +279,12 @@ class GitHubActionsUpdater:
         if not normal_prices:
             logger.warning("全ての価格が外れ値と判定されました")
             
-            # 前回価格が存在する場合はそれを維持
-            if previous_price and previous_price > 0:
+            # 前回価格が存在し、かつ閾値以上の場合はそれを維持
+            if previous_price and previous_price > self.minimum_price_threshold:
                 logger.info(f"前回価格を維持: {previous_price:,}")
                 return previous_price, "前回価格維持（全価格外れ値）"
             else:
-                # 前回価格もない場合は中央値を使用（最後の手段）
+                # 前回価格が閾値以下または存在しない場合は中央値を使用
                 median_price = int(np.median(prices))
                 logger.warning(f"中央値を使用: {median_price:,}")
                 return median_price, "中央値使用（全価格外れ値）"
@@ -271,15 +294,15 @@ class GitHubActionsUpdater:
         excluded_count = len(outliers)
         
         if excluded_count > 0:
-            logger.info(f"外れ値を{excluded_count}件除外")
+            logger.info(f"IQR法で{excluded_count}件を外れ値として除外")
         
         logger.info(f"選定された最適価格: {optimal_price:,}")
         
-        return optimal_price, "IQR法正常価格"
+        return optimal_price, "二段階フィルタリング正常価格"
 
     @retry_on_error(max_retries=3, delay=2)
     def update_equipment_price_with_retry(self, equipment_id, equipment_name, current_equipment_data):
-        """特定の装備の価格を更新（IQR法対応版）"""
+        """特定の装備の価格を更新（二段階フィルタリング対応版）"""
         driver = None
         try:
             # 前回価格を取得
@@ -360,13 +383,16 @@ class GitHubActionsUpdater:
         return results
 
     def run_update(self):
-        """価格更新実行（IQR法対応）"""
+        """価格更新実行（二段階フィルタリング対応）"""
         if self.target_items is None:
             logger.info(f"GitHub Actions price update started - Target: ALL items (parallel processing)")
         else:
             logger.info(f"GitHub Actions price update started - Target: {self.target_items} items")
         
-        logger.info(f"IQR法設定: 倍率{self.iqr_multiplier}, 最小データ数{self.minimum_data_points}件")
+        logger.info(f"二段階フィルタリング設定:")
+        logger.info(f"  事前除外閾値: {self.minimum_price_threshold:,} NESO以下")
+        logger.info(f"  IQR法倍率: {self.iqr_multiplier}")
+        logger.info(f"  最小データ数: {self.minimum_data_points}件")
         
         try:
             with open(self.json_file_path, 'r', encoding='utf-8') as f:
@@ -427,7 +453,7 @@ class GitHubActionsUpdater:
                 
                 time.sleep(5)  # GitHub Actions制限対応
 
-        # JSONデータに反映（IQR法結果を含む）
+        # JSONデータに反映（二段階フィルタリング結果を含む）
         normal_updates = 0
         outlier_updates = 0
         failed_updates = 0
@@ -462,7 +488,7 @@ class GitHubActionsUpdater:
 
         # 最終統計
         logger.info("=" * 50)
-        logger.info("📊 IQR法価格更新統計:")
+        logger.info("📊 二段階フィルタリング価格更新統計:")
         logger.info(f"  正常更新: {normal_updates}件")
         logger.info(f"  外れ値処理: {outlier_updates}件")
         logger.info(f"  更新失敗: {failed_updates}件")
