@@ -1,12 +1,5 @@
 [
   {
-    "timestamp": "2025-06-21T07:00:00",
-    "total_price": 1462295169,
-    "item_count": 278,
-    "average_price": 5260054,
-    "original_points": 278
-  },
-  {
     "timestamp": "2025-06-21T10:00:00",
     "total_price": 1456256557,
     "item_count": 278,
@@ -333,6 +326,13 @@
     "total_price": 952166369,
     "item_count": 280,
     "average_price": 3400594,
+    "original_points": 280
+  },
+  {
+    "timestamp": "2025-06-24T05:00:00",
+    "total_price": 953840826,
+    "item_count": 280,
+    "average_price": 3406574,
     "original_points": 280
   }
 ]
