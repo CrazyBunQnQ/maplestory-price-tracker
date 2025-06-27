@@ -39,23 +39,19 @@ jobs:
         python-version: '3.11'
         cache: 'pip'
     
-    - name: Complete Chrome and ChromeDriver cleanup
+    - name: Complete cleanup
       run: |
         sudo apt-get remove -y google-chrome-stable chromium-browser || true
         sudo rm -rf /usr/local/bin/chromedriver
         sudo rm -rf /usr/bin/chromedriver
-        sudo rm -rf /opt/google/chrome
         sudo apt-get autoremove -y
         sudo apt-get clean
-        echo "Complete cleanup finished"
+        echo "Cleanup completed"
     
-    - name: Install Chrome and ChromeDriver with exact version matching
+    - name: Install Chrome and ChromeDriver
       run: |
-        echo "=== Installing Chrome and compatible ChromeDriver ==="
-        
-        # Install required packages
         sudo apt-get update
-        sudo apt-get install -y wget gnupg curl unzip jq
+        sudo apt-get install -y wget gnupg curl unzip
         
         # Install Google Chrome
         wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
@@ -63,209 +59,107 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y google-chrome-stable
         
-        # Get exact Chrome version
-        CHROME_FULL_VERSION=$(google-chrome --version | grep -oP '\d+\.\d+\.\d+\.\d+')
-        CHROME_MAJOR=$(echo $CHROME_FULL_VERSION | cut -d '.' -f 1)
-        
-        echo "Chrome installed: $CHROME_FULL_VERSION"
+        # Get Chrome major version
+        CHROME_MAJOR=$(google-chrome --version | grep -oP '\d+' | head -1)
         echo "Chrome major version: $CHROME_MAJOR"
         
-        # Download compatible ChromeDriver using Chrome for Testing API
-        echo "Searching for compatible ChromeDriver..."
+        # Download ChromeDriver - try multiple versions
+        CHROMEDRIVER_DOWNLOADED=false
         
-        # First try exact version match
-        EXACT_URL="https://storage.googleapis.com/chrome-for-testing-public/${CHROME_FULL_VERSION}/linux64/chromedriver-linux64.zip"
-        echo "Trying exact version: $EXACT_URL"
+        # Version list for fallback
+        VERSIONS=(
+          "${CHROME_MAJOR}.0.0.0"
+          "131.0.6778.204"
+          "130.0.6723.116"
+          "129.0.6668.100"
+          "128.0.6613.137"
+        )
         
-        if wget --spider "$EXACT_URL" 2>/dev/null; then
-          echo "Exact version found, downloading..."
-          wget -O /tmp/chromedriver.zip "$EXACT_URL"
-          DOWNLOAD_SUCCESS=true
-        else
-          echo "Exact version not available, fetching from API..."
+        for VERSION in "${VERSIONS[@]}"; do
+          echo "Trying ChromeDriver version: $VERSION"
+          URL="https://storage.googleapis.com/chrome-for-testing-public/$VERSION/linux64/chromedriver-linux64.zip"
           
-          # Use Chrome for Testing API to find compatible version
-          API_URL="https://googlechromelabs.github.io/chrome-for-testing/known-good-versions-with-downloads.json"
-          
-          # Download and parse API data
-          curl -s "$API_URL" > /tmp/chrome_versions.json
-          
-          # Find compatible ChromeDriver version using Python
-          COMPATIBLE_VERSION=$(python3 -c "
-import json
-import sys
-
-try:
-    with open('/tmp/chrome_versions.json', 'r') as f:
-        data = json.load(f)
-    
-    chrome_major = int('$CHROME_MAJOR')
-    compatible_versions = []
-    
-    for version_info in data.get('versions', []):
-        version = version_info.get('version', '')
-        version_parts = version.split('.')
-        if len(version_parts) >= 1 and int(version_parts[0]) == chrome_major:
-            downloads = version_info.get('downloads', {})
-            chromedriver = downloads.get('chromedriver', [])
-            for download in chromedriver:
-                if download.get('platform') == 'linux64':
-                    compatible_versions.append(version)
-                    break
-    
-    if compatible_versions:
-        # Sort and get latest compatible version
-        compatible_versions.sort(key=lambda x: [int(v) for v in x.split('.')])
-        print(compatible_versions[-1])
-    else:
-        print('')
-        
-except Exception as e:
-    print('')
-")
-          
-          if [ -n "$COMPATIBLE_VERSION" ]; then
-            COMPATIBLE_URL="https://storage.googleapis.com/chrome-for-testing-public/${COMPATIBLE_VERSION}/linux64/chromedriver-linux64.zip"
-            echo "Found compatible version: $COMPATIBLE_VERSION"
-            echo "Downloading: $COMPATIBLE_URL"
-            
-            if wget -O /tmp/chromedriver.zip "$COMPATIBLE_URL"; then
-              DOWNLOAD_SUCCESS=true
-            else
-              DOWNLOAD_SUCCESS=false
-            fi
+          if wget --timeout=15 -O /tmp/chromedriver.zip "$URL" 2>/dev/null; then
+            echo "Successfully downloaded: $VERSION"
+            CHROMEDRIVER_DOWNLOADED=true
+            break
           else
-            DOWNLOAD_SUCCESS=false
+            echo "Failed: $VERSION"
           fi
-        fi
+        done
         
-        # Fallback to predefined versions if API fails
-        if [ "$DOWNLOAD_SUCCESS" != "true" ]; then
-          echo "API approach failed, trying fallback versions..."
-          
-          FALLBACK_VERSIONS=(
-            "138.0.7204.49"
-            "138.0.7204.0" 
-            "137.0.7169.98"
-            "136.0.7103.92"
-            "135.0.7021.98"
-            "134.0.6991.99"
-          )
-          
-          for VERSION in "${FALLBACK_VERSIONS[@]}"; do
-            FALLBACK_URL="https://storage.googleapis.com/chrome-for-testing-public/$VERSION/linux64/chromedriver-linux64.zip"
-            echo "Trying fallback version: $VERSION"
-            
-            if wget --timeout=10 -O /tmp/chromedriver.zip "$FALLBACK_URL" 2>/dev/null; then
-              echo "Successfully downloaded fallback version: $VERSION"
-              DOWNLOAD_SUCCESS=true
-              break
-            fi
-          done
-        fi
-        
-        # Final check
-        if [ "$DOWNLOAD_SUCCESS" != "true" ]; then
-          echo "ERROR: All ChromeDriver download attempts failed"
+        if [ "$CHROMEDRIVER_DOWNLOADED" != "true" ]; then
+          echo "All ChromeDriver downloads failed"
           exit 1
         fi
         
-        # Extract and install ChromeDriver
-        echo "Extracting ChromeDriver..."
+        # Extract and install
         sudo unzip -o /tmp/chromedriver.zip -d /tmp/
         
-        # Handle different archive structures
         if [ -f "/tmp/chromedriver-linux64/chromedriver" ]; then
           sudo mv /tmp/chromedriver-linux64/chromedriver /usr/local/bin/
         elif [ -f "/tmp/chromedriver" ]; then
           sudo mv /tmp/chromedriver /usr/local/bin/
         else
-          echo "ERROR: ChromeDriver binary not found after extraction"
-          echo "Contents of /tmp:"
-          ls -la /tmp/
+          echo "ChromeDriver binary not found"
           exit 1
         fi
         
         sudo chmod +x /usr/local/bin/chromedriver
         
-        # Verify installation
-        echo "=== Installation Verification ==="
-        echo "Chrome version:"
+        echo "Installation verification:"
         google-chrome --version
-        echo "ChromeDriver version:"
         chromedriver --version
-        echo "ChromeDriver path:"
-        which chromedriver
-        
-        # Final compatibility check
-        FINAL_CHROME_MAJOR=$(google-chrome --version | grep -oP '\d+' | head -1)
-        FINAL_CHROMEDRIVER_MAJOR=$(chromedriver --version | grep -oP '\d+' | head -1)
-        
-        echo "=== Compatibility Check ==="
-        echo "Chrome major: $FINAL_CHROME_MAJOR"
-        echo "ChromeDriver major: $FINAL_CHROMEDRIVER_MAJOR"
-        
-        if [ "$FINAL_CHROME_MAJOR" = "$FINAL_CHROMEDRIVER_MAJOR" ]; then
-          echo "✅ Version compatibility CONFIRMED"
-        else
-          echo "⚠️  Version mismatch detected but proceeding"
-        fi
     
-    - name: Install Python dependencies with webdriver-manager
+    - name: Install Python dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         pip install webdriver-manager==4.0.1
-        echo "Python packages installed:"
-        pip list | grep -E "(selenium|webdriver-manager|requests|beautifulsoup4|lxml|numpy)"
     
     - name: Create required directories
       run: |
         mkdir -p data/price_history
         mkdir -p scripts
     
-    - name: Final environment verification
+    - name: Environment verification
       run: |
-        echo "=== Final Environment Verification ==="
-        echo "Operating System: $(uname -a)"
-        echo "Python version: $(python --version)"
-        echo "Chrome version: $(google-chrome --version)"
-        echo "ChromeDriver version: $(chromedriver --version)"
-        echo "ChromeDriver location: $(which chromedriver)"
-        echo "ChromeDriver permissions: $(ls -la /usr/local/bin/chromedriver)"
-        echo "Available memory: $(free -h | grep Mem)"
-        echo "Available disk space: $(df -h | grep '/$')"
-        echo "Data directory: $(ls -la data/ || echo 'not found')"
+        echo "=== Environment Verification ==="
+        python --version
+        google-chrome --version
+        chromedriver --version
+        which chromedriver
+        ls -la /usr/local/bin/chromedriver
+        echo "Memory: $(free -h | grep Mem)"
+        echo "Disk: $(df -h | grep '/$')"
     
-    - name: Git configuration setup
+    - name: Git configuration
       run: |
         git config --global user.email "action@github.com"
         git config --global user.name "GitHub Action Bot"
         git config --global pull.rebase false
-        git config --global merge.ours.driver true
-        echo "Git configuration completed"
     
     - name: Update equipment prices
       run: |
-        echo "Starting MapleStory Equipment Price Auto Update at $(date '+%Y-%m-%d %H:%M:%S JST')"
+        echo "Starting price update at $(date '+%Y-%m-%d %H:%M:%S JST')"
         python scripts/update_prices.py
-        echo "MapleStory Equipment Price Auto Update completed at $(date '+%Y-%m-%d %H:%M:%S JST')"
+        echo "Price update completed at $(date '+%Y-%m-%d %H:%M:%S JST')"
       env:
         TARGET_ITEMS: ${{ github.event.inputs.target_items || 'ALL' }}
         PYTHONPATH: ${{ github.workspace }}
         PYTHONUNBUFFERED: 1
     
-    - name: Update individual item price history
+    - name: Update price history
       run: |
-        echo "Starting individual item price history update"
-        python scripts/historical_price_tracker.py || echo "Historical price tracker failed"
+        echo "Starting price history update"
+        python scripts/historical_price_tracker.py || echo "Historical tracker failed"
       env:
         PYTHONPATH: ${{ github.workspace }}
     
     - name: Aggregate total price data
       run: |
         echo "Starting total price aggregation"
-        python scripts/total_price_aggregator.py || echo "Total price aggregator failed"
+        python scripts/total_price_aggregator.py || echo "Aggregator failed"
       env:
         PYTHONPATH: ${{ github.workspace }}
     
@@ -290,28 +184,24 @@ except Exception as e:
         git fetch origin
         
         CURRENT_TIME=$(date '+%Y-%m-%d %H:%M:%S JST')
-        COMMIT_MESSAGE="Auto-update: Equipment prices (Chrome v138 compatibility fix)
+        COMMIT_MESSAGE="Auto-update: Equipment prices (ChromeDriver compatibility)
 
-        Update Summary:
         - Update time: ${CURRENT_TIME}
         - Changed files: ${{ steps.check-changes.outputs.changed_files }}
-        - Chrome version: $(google-chrome --version | grep -oP '\d+\.\d+\.\d+\.\d+')
-        - ChromeDriver version: $(chromedriver --version | grep -oP '\d+\.\d+\.\d+\.\d+')
-        - Processing mode: Parallel (high-speed)
-        - Compatibility: Fixed
+        - Chrome/ChromeDriver compatibility verified
         - Automated by GitHub Actions"
         
         git commit -m "$COMMIT_MESSAGE" || echo "No changes to commit"
         
         # Multiple push strategies
         if git push origin ${{ github.ref_name }}; then
-          echo "✅ Push successful"
+          echo "Push successful"
         elif git merge origin/${{ github.ref_name }} --no-edit && git push origin ${{ github.ref_name }}; then
-          echo "✅ Push successful after merge"
+          echo "Push successful after merge"
         elif git push --force-with-lease origin ${{ github.ref_name }}; then
-          echo "✅ Push successful with force-with-lease"
+          echo "Push successful with force-with-lease"
         else
-          echo "❌ All push strategies failed"
+          echo "All push strategies failed"
           exit 1
         fi
     
@@ -319,35 +209,32 @@ except Exception as e:
       run: |
         echo "## MapleStory Equipment Price Auto Update Results" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### Chrome Compatibility Fix Applied" >> $GITHUB_STEP_SUMMARY
+        echo "### System Information" >> $GITHUB_STEP_SUMMARY
         echo "| Item | Result |" >> $GITHUB_STEP_SUMMARY
         echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
         echo "| Execution Time | $(date '+%Y-%m-%d %H:%M:%S JST') |" >> $GITHUB_STEP_SUMMARY
         echo "| Chrome Version | $(google-chrome --version 2>/dev/null) |" >> $GITHUB_STEP_SUMMARY
         echo "| ChromeDriver Version | $(chromedriver --version 2>/dev/null) |" >> $GITHUB_STEP_SUMMARY
-        echo "| Compatibility Status | ✅ Fixed |" >> $GITHUB_STEP_SUMMARY
         echo "| Data Changed | ${{ steps.check-changes.outputs.changed }} |" >> $GITHUB_STEP_SUMMARY
         echo "| Changed Files | ${{ steps.check-changes.outputs.changed_files }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| Processing Mode | Parallel (High-Speed) |" >> $GITHUB_STEP_SUMMARY
         echo "| Target Items | ${{ env.TARGET_ITEMS }} |" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         
         if [ "${{ steps.check-changes.outputs.changed }}" == "true" ]; then
-          echo "**✅ Price update with Chrome v138 compatibility completed successfully!**" >> $GITHUB_STEP_SUMMARY
+          echo "**✅ Price update completed successfully!**" >> $GITHUB_STEP_SUMMARY
         else
-          echo "**⚠️ No price changes detected - check for system issues**" >> $GITHUB_STEP_SUMMARY
+          echo "**ℹ️ No changes detected**" >> $GITHUB_STEP_SUMMARY
         fi
 
-    - name: Collect diagnostic info on failure
+    - name: Diagnostic info on failure
       if: failure()
       run: |
-        echo "## Workflow Failed - Chrome Compatibility Issue" >> $GITHUB_STEP_SUMMARY
+        echo "## Workflow Failed" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### Diagnostic Information" >> $GITHUB_STEP_SUMMARY
         echo "- Execution time: $(date '+%Y-%m-%d %H:%M:%S JST')" >> $GITHUB_STEP_SUMMARY
-        echo "- Chrome version: $(google-chrome --version 2>/dev/null || echo 'Not found')" >> $GITHUB_STEP_SUMMARY
-        echo "- ChromeDriver version: $(chromedriver --version 2>/dev/null || echo 'Not found')" >> $GITHUB_STEP_SUMMARY
-        echo "- ChromeDriver path: $(which chromedriver 2>/dev/null || echo 'Not found')" >> $GITHUB_STEP_SUMMARY
+        echo "- Chrome: $(google-chrome --version 2>/dev/null || echo 'Not found')" >> $GITHUB_STEP_SUMMARY
+        echo "- ChromeDriver: $(chromedriver --version 2>/dev/null || echo 'Not found')" >> $GITHUB_STEP_SUMMARY
         echo "- Available memory: $(free -h | grep Mem | awk '{print $7}' || echo 'Unknown')" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "**Solution Applied**: Chrome v138 and ChromeDriver automatic version matching" >> $GITHUB_STEP_SUMMARY
+        echo "**Check logs for detailed error information.**" >> $GITHUB_STEP_SUMMARY
