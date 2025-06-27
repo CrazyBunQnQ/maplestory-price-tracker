@@ -17,7 +17,6 @@ permissions:
 env:
   TZ: Asia/Tokyo
 
-# 重複実行防止
 concurrency:
   group: price-update-${{ github.ref }}
   cancel-in-progress: true
@@ -40,174 +39,79 @@ jobs:
         python-version: '3.11'
         cache: 'pip'
     
-    - name: Force cleanup previous Chrome installations
+    - name: Force cleanup previous installations
       run: |
         sudo apt-get remove -y google-chrome-stable || true
         sudo rm -f /usr/local/bin/chromedriver || true
         sudo apt-get autoremove -y
         sudo apt-get clean
     
-    - name: Setup Chrome and ChromeDriver (Force Latest)
+    - name: Setup Chrome and ChromeDriver (Simplified)
       run: |
-        echo "=== Installing Chrome and ChromeDriver ==="
+        echo "Installing Chrome and ChromeDriver..."
         sudo apt-get update
         sudo apt-get install -y wget gnupg curl unzip
         
-        # Google Chrome最新版をインストール
+        # Install Google Chrome
         wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
         sudo sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list'
         sudo apt-get update
-        sudo apt-get install -y google-chrome-stable --fix-missing
+        sudo apt-get install -y google-chrome-stable
         
-        # Chromeバージョンを取得
-        CHROME_FULL_VERSION=$(google-chrome --version | grep -oP '\d+\.\d+\.\d+\.\d+')
-        CHROME_MAJOR_VERSION=$(echo $CHROME_FULL_VERSION | cut -d '.' -f 1)
-        echo "Chrome Full Version: $CHROME_FULL_VERSION"
-        echo "Chrome Major Version: $CHROME_MAJOR_VERSION"
+        # Get Chrome version
+        CHROME_VERSION=$(google-chrome --version | grep -oP '\d+' | head -1)
+        echo "Chrome major version: $CHROME_VERSION"
         
-        # Chrome for Testing APIから最新のChromeDriverを取得
-        echo "Fetching ChromeDriver for version $CHROME_MAJOR_VERSION..."
+        # Download compatible ChromeDriver
+        echo "Downloading ChromeDriver..."
+        DOWNLOAD_SUCCESS=false
         
-        # 利用可能なバージョンをAPIから取得
-        API_URL="https://googlechromelabs.github.io/chrome-for-testing/known-good-versions-with-downloads.json"
-        
-        # APIからの取得を試行
-        CHROMEDRIVER_VERSION=""
-        if curl -s "$API_URL" > /tmp/versions.json 2>/dev/null; then
-          echo "API data retrieved successfully"
-          
-          # Pythonでバージョンマッチングを実行
-          CHROMEDRIVER_VERSION=$(python3 -c "
-import json
-import sys
-
-try:
-    with open('/tmp/versions.json', 'r') as f:
-        data = json.load(f)
-    
-    chrome_major = int('$CHROME_MAJOR_VERSION')
-    compatible_versions = []
-    
-    for version_info in data.get('versions', []):
-        version = version_info.get('version', '')
-        if version.startswith(str(chrome_major) + '.'):
-            downloads = version_info.get('downloads', {})
-            chromedriver = downloads.get('chromedriver', [])
-            for download in chromedriver:
-                if download.get('platform') == 'linux64':
-                    compatible_versions.append(version)
-                    break
-    
-    if compatible_versions:
-        # 最新の互換バージョンを選択
-        latest_version = sorted(compatible_versions, key=lambda x: [int(v) for v in x.split('.')])[-1]
-        print(latest_version)
-    else:
-        print('')
-        
-except Exception as e:
-    print('')
-" 2>/dev/null)
+        # Try exact version first
+        EXACT_URL="https://storage.googleapis.com/chrome-for-testing-public/${CHROME_VERSION}.0.0.0/linux64/chromedriver-linux64.zip"
+        if wget --timeout=10 -O /tmp/chromedriver.zip "$EXACT_URL" 2>/dev/null; then
+          DOWNLOAD_SUCCESS=true
+          echo "Downloaded exact version"
         fi
         
-        # APIから取得できた場合
-        if [ -n "$CHROMEDRIVER_VERSION" ]; then
-          echo "Found compatible ChromeDriver version: $CHROMEDRIVER_VERSION"
-          DOWNLOAD_URL="https://storage.googleapis.com/chrome-for-testing-public/$CHROMEDRIVER_VERSION/linux64/chromedriver-linux64.zip"
-          
-          if wget --timeout=30 -O /tmp/chromedriver.zip "$DOWNLOAD_URL" 2>/dev/null; then
-            echo "Downloaded ChromeDriver $CHROMEDRIVER_VERSION successfully"
-            DOWNLOAD_SUCCESS=true
-          else
-            echo "Download failed for $CHROMEDRIVER_VERSION"
-            DOWNLOAD_SUCCESS=false
-          fi
-        else
-          echo "API version matching failed"
-          DOWNLOAD_SUCCESS=false
-        fi
-        
-        # フォールバック: 直接バージョン試行
-        if [ "$DOWNLOAD_SUCCESS" != "true" ]; then
-          echo "Trying direct version matching..."
-          
-          FALLBACK_VERSIONS=(
-            "${CHROME_FULL_VERSION}"
-            "${CHROME_MAJOR_VERSION}.0.0.0"
-            "138.0.7204.49"
-            "138.0.7204.0"
-            "137.0.7169.98"
-            "131.0.6778.204"
+        # Try fallback versions
+        if [ "$DOWNLOAD_SUCCESS" = "false" ]; then
+          FALLBACK_URLS=(
+            "https://storage.googleapis.com/chrome-for-testing-public/131.0.6778.204/linux64/chromedriver-linux64.zip"
+            "https://storage.googleapis.com/chrome-for-testing-public/130.0.6723.116/linux64/chromedriver-linux64.zip"
+            "https://storage.googleapis.com/chrome-for-testing-public/129.0.6668.100/linux64/chromedriver-linux64.zip"
           )
           
-          for VERSION in "${FALLBACK_VERSIONS[@]}"; do
-            echo "Trying ChromeDriver version: $VERSION"
-            DOWNLOAD_URL="https://storage.googleapis.com/chrome-for-testing-public/$VERSION/linux64/chromedriver-linux64.zip"
-            
-            if wget --timeout=15 --tries=2 -O /tmp/chromedriver.zip "$DOWNLOAD_URL" 2>/dev/null; then
-              echo "Successfully downloaded ChromeDriver version: $VERSION"
+          for URL in "${FALLBACK_URLS[@]}"; do
+            if wget --timeout=10 -O /tmp/chromedriver.zip "$URL" 2>/dev/null; then
               DOWNLOAD_SUCCESS=true
+              echo "Downloaded fallback version: $URL"
               break
-            else
-              echo "Failed to download version: $VERSION"
             fi
           done
         fi
         
-        # ダウンロード失敗時のエラー
-        if [ "$DOWNLOAD_SUCCESS" != "true" ]; then
-          echo "ERROR: All ChromeDriver download attempts failed"
-          echo "Chrome version: $CHROME_FULL_VERSION"
-          echo "Trying one more time with webdriver-manager fallback..."
+        if [ "$DOWNLOAD_SUCCESS" = "false" ]; then
+          echo "All downloads failed"
           exit 1
         fi
         
-        # ChromeDriverの展開とインストール
-        echo "Extracting and installing ChromeDriver..."
+        # Extract and install
+        sudo unzip -o /tmp/chromedriver.zip -d /tmp/
         
-        # 既存のChromeDriverを削除
-        sudo rm -f /usr/local/bin/chromedriver
-        
-        # 展開
-        unzip -o /tmp/chromedriver.zip -d /tmp/
-        
-        # ファイル確認とインストール
         if [ -f "/tmp/chromedriver-linux64/chromedriver" ]; then
           sudo mv /tmp/chromedriver-linux64/chromedriver /usr/local/bin/
-          echo "ChromeDriver installed from chromedriver-linux64 directory"
         elif [ -f "/tmp/chromedriver" ]; then
           sudo mv /tmp/chromedriver /usr/local/bin/
-          echo "ChromeDriver installed from root directory"
         else
-          echo "ERROR: ChromeDriver binary not found after extraction"
-          echo "Contents of /tmp/:"
-          ls -la /tmp/
+          echo "ChromeDriver binary not found"
           exit 1
         fi
         
-        # 実行権限設定
         sudo chmod +x /usr/local/bin/chromedriver
         
-        # 最終確認
-        echo "=== Installation Verification ==="
-        echo "Chrome version:"
+        echo "Installation completed:"
         google-chrome --version
-        echo "ChromeDriver version:"
         chromedriver --version
-        
-        # バージョン互換性確認
-        FINAL_CHROME_MAJOR=$(google-chrome --version | grep -oP '\d+' | head -1)
-        FINAL_CHROMEDRIVER_MAJOR=$(chromedriver --version | grep -oP '\d+' | head -1)
-        
-        echo "Final compatibility check:"
-        echo "Chrome major: $FINAL_CHROME_MAJOR"
-        echo "ChromeDriver major: $FINAL_CHROMEDRIVER_MAJOR"
-        
-        if [ "$FINAL_CHROME_MAJOR" = "$FINAL_CHROMEDRIVER_MAJOR" ]; then
-          echo "✅ Version compatibility confirmed"
-        else
-          echo "⚠️  Version mismatch detected but proceeding"
-        fi
     
     - name: Install Python dependencies
       run: |
@@ -223,7 +127,7 @@ except Exception as e:
       run: |
         echo "=== Environment Information ==="
         python --version
-        pip list | grep -E "(selenium|requests|beautifulsoup4|lxml|numpy|webdriver-manager)"
+        pip list | grep -E "(selenium|requests|beautifulsoup4|lxml|numpy)"
         google-chrome --version
         chromedriver --version
         ls -la data/ || echo "data directory not found"
@@ -231,9 +135,6 @@ except Exception as e:
         free -h
         echo "Available disk space:"
         df -h
-        echo "ChromeDriver location:"
-        which chromedriver
-        ls -la /usr/local/bin/chromedriver
     
     - name: Git configuration setup
       run: |
@@ -297,23 +198,15 @@ except Exception as e:
       run: |
         echo "=== Starting robust commit and push process ==="
         
-        # 現在の状態を確認
-        echo "Current working directory status:"
-        git status --porcelain
-        
-        # 全ての変更をステージング
+        # Stage all changes
         echo "Staging all changes in data directory..."
         git add data/
         
-        # ステージング後の状態確認
-        echo "After staging:"
-        git status --porcelain
-        
-        # リモートの最新情報を取得
+        # Fetch latest remote changes
         echo "Fetching latest remote changes..."
         git fetch origin
         
-        # コミット作成
+        # Create commit
         CURRENT_TIME=$(date '+%Y-%m-%d %H:%M:%S JST')
         COMMIT_MESSAGE="Auto-update: Equipment prices (ChromeDriver v138 compatibility)
 
@@ -327,37 +220,27 @@ except Exception as e:
         
         echo "Creating commit..."
         git commit -m "$COMMIT_MESSAGE" || {
-          echo "Commit failed, checking if there are actually changes to commit"
-          git status
-          if [ -z "$(git diff --cached)" ]; then
-            echo "No staged changes found, exiting successfully"
-            exit 0
-          else
-            echo "Staged changes exist but commit failed"
-            exit 1
-          fi
+          echo "No changes to commit"
+          exit 0
         }
         
         echo "Commit created successfully"
         
-        # プッシュの試行（複数の戦略を使用）
+        # Push with multiple strategies
         echo "Attempting to push changes..."
         
-        # 戦略1: 通常のプッシュ
+        # Strategy 1: Normal push
         if git push origin ${{ github.ref_name }}; then
-          echo "✅ Push successful with normal strategy"
+          echo "✅ Push successful"
           exit 0
         fi
         
-        echo "Normal push failed, trying advanced conflict resolution..."
+        echo "Normal push failed, trying conflict resolution..."
         
-        # 戦略2: リモートとの競合解決
-        echo "Fetching and merging remote changes..."
+        # Strategy 2: Merge and push
         git fetch origin
-        
-        # マージの試行
         if git merge origin/${{ github.ref_name }} --no-edit; then
-          echo "Merge successful, attempting push again..."
+          echo "Merge successful, pushing again..."
           if git push origin ${{ github.ref_name }}; then
             echo "✅ Push successful after merge"
             exit 0
@@ -367,29 +250,14 @@ except Exception as e:
           git merge --abort 2>/dev/null || true
         fi
         
-        # 戦略3: 強制的な解決（データファイルを優先）
-        echo "Using force resolution strategy..."
-        
-        # 現在のコミットを一時的に保存
-        TEMP_COMMIT=$(git rev-parse HEAD)
-        
-        # リモートのHEADをリセット
-        git reset --hard origin/${{ github.ref_name }}
-        
-        # 再度変更をステージングして強制コミット
-        git add data/
-        git commit -m "$COMMIT_MESSAGE" || {
-          echo "No changes to commit after reset"
-          exit 0
-        }
-        
-        # 強制プッシュ（with lease for safety）
+        # Strategy 3: Force push with lease
+        echo "Using force push with lease..."
         if git push --force-with-lease origin ${{ github.ref_name }}; then
           echo "✅ Push successful with force-with-lease"
           exit 0
         fi
         
-        # 戦略4: 最終手段の強制プッシュ
+        # Strategy 4: Final force push
         echo "Attempting final force push..."
         if git push --force origin ${{ github.ref_name }}; then
           echo "✅ Push successful with force push"
@@ -397,10 +265,6 @@ except Exception as e:
         fi
         
         echo "❌ All push strategies failed"
-        echo "Final git status:"
-        git status
-        echo "Remote refs:"
-        git ls-remote origin
         exit 1
     
     - name: Generate summary
@@ -417,7 +281,6 @@ except Exception as e:
         echo "| ChromeDriver Version | $(chromedriver --version 2>/dev/null || echo 'Not found') |" >> $GITHUB_STEP_SUMMARY
         echo "| Processing Mode | Parallel (High-Speed) |" >> $GITHUB_STEP_SUMMARY
         echo "| Target Items | ${{ env.TARGET_ITEMS }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| Compatibility Fix | Chrome v138 ChromeDriver Auto-Detection |" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         
         if [ "${{ steps.check-changes.outputs.changed }}" == "true" ]; then
@@ -435,12 +298,6 @@ except Exception as e:
         echo "- Execution time: $(date '+%Y-%m-%d %H:%M:%S JST')" >> $GITHUB_STEP_SUMMARY
         echo "- Chrome version: $(google-chrome --version 2>/dev/null || echo 'Not found')" >> $GITHUB_STEP_SUMMARY
         echo "- ChromeDriver version: $(chromedriver --version 2>/dev/null || echo 'Not found')" >> $GITHUB_STEP_SUMMARY
-        echo "- ChromeDriver location: $(which chromedriver 2>/dev/null || echo 'Not found')" >> $GITHUB_STEP_SUMMARY
         echo "- Available memory: $(free -h | grep Mem | awk '{print $7}')" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### Git Status" >> $GITHUB_STEP_SUMMARY
-        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-        git status 2>/dev/null || echo "Git status unavailable" >> $GITHUB_STEP_SUMMARY
-        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "**Solution**: ChromeDriver v138 compatibility fix applied." >> $GITHUB_STEP_SUMMARY
+        echo "**Solution**: Check the action logs for detailed error information." >> $GITHUB_STEP_SUMMARY
