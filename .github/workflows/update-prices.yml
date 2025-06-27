@@ -122,6 +122,14 @@ jobs:
         echo "Available disk space:"
         df -h
     
+    - name: Git configuration setup
+      run: |
+        git config --global user.email "action@github.com"
+        git config --global user.name "GitHub Action Bot"
+        git config --global pull.rebase false
+        git config --global merge.ours.driver true
+        echo "Git configuration completed"
+    
     - name: Update equipment prices
       run: |
         echo "Starting MapleStory Equipment Price Auto Update at $(date '+%Y-%m-%d %H:%M:%S JST')"
@@ -146,56 +154,140 @@ jobs:
       env:
         PYTHONPATH: ${{ github.workspace }}
     
-    - name: Check for changes
+    - name: Check for changes and show git status
       id: check-changes
       run: |
+        echo "=== Git Status Diagnostic ==="
+        git status --porcelain
+        git status
+        
+        echo "=== Changed Files ==="
+        git diff --name-only
+        
         if [ -n "$(git status --porcelain data/)" ]; then
           echo "changed=true" >> $GITHUB_OUTPUT
           echo "Data changes detected"
+          
+          CHANGED_FILES=$(git status --porcelain data/ | wc -l)
+          echo "changed_files=${CHANGED_FILES}" >> $GITHUB_OUTPUT
+          
+          echo "Changed files in data/:"
+          git status --short data/
         else
           echo "changed=false" >> $GITHUB_OUTPUT
           echo "No changes detected"
+          echo "changed_files=0" >> $GITHUB_OUTPUT
         fi
     
-    - name: Sync with remote and push changes
+    - name: Robust commit and push with conflict resolution
       if: steps.check-changes.outputs.changed == 'true'
       run: |
-        git config --local user.email "action@github.com"
-        git config --local user.name "GitHub Action Bot"
+        echo "=== Starting robust commit and push process ==="
         
-        # リモートの変更を取得
+        # 現在の状態を確認
+        echo "Current working directory status:"
+        git status --porcelain
+        
+        # 全ての変更をステージング
+        echo "Staging all changes in data directory..."
+        git add data/
+        
+        # ステージング後の状態確認
+        echo "After staging:"
+        git status --porcelain
+        
+        # リモートの最新情報を取得
+        echo "Fetching latest remote changes..."
         git fetch origin
         
-        # 競合を解決するためにリベース
-        git rebase origin/${{ github.ref_name }} || {
-          echo "Rebase failed, trying merge strategy"
-          git rebase --abort
-          git merge origin/${{ github.ref_name }} || {
-            echo "Merge failed, force updating with latest changes"
-            git reset --hard HEAD
-            git clean -fd
-          }
-        }
-        
+        # コミット作成
         CURRENT_TIME=$(date '+%Y-%m-%d %H:%M:%S JST')
-        
-        git add data/
-        git commit -m "Auto-update: Equipment prices (ChromeDriver compatibility fix)
+        COMMIT_MESSAGE="Auto-update: Equipment prices (Git conflict resolution fix)
 
         Update Summary:
         - Update time: ${CURRENT_TIME}
+        - Changed files: ${{ steps.check-changes.outputs.changed_files }}
         - ChromeDriver: Auto-detected version
         - Processing mode: Parallel (high-speed)
-        - Automated by GitHub Actions" || echo "No changes to commit"
+        - Automated by GitHub Actions"
         
-        # 再度fetchしてからpush（最終確認）
-        git fetch origin
-        git push origin ${{ github.ref_name }} || {
-          echo "Push failed, trying force push with lease"
-          git push --force-with-lease origin ${{ github.ref_name }}
+        echo "Creating commit..."
+        git commit -m "$COMMIT_MESSAGE" || {
+          echo "Commit failed, checking if there are actually changes to commit"
+          git status
+          if [ -z "$(git diff --cached)" ]; then
+            echo "No staged changes found, exiting successfully"
+            exit 0
+          else
+            echo "Staged changes exist but commit failed"
+            exit 1
+          fi
         }
         
-        echo "Successfully pushed changes"
+        echo "Commit created successfully"
+        
+        # プッシュの試行（複数の戦略を使用）
+        echo "Attempting to push changes..."
+        
+        # 戦略1: 通常のプッシュ
+        if git push origin ${{ github.ref_name }}; then
+          echo "✅ Push successful with normal strategy"
+          exit 0
+        fi
+        
+        echo "Normal push failed, trying advanced conflict resolution..."
+        
+        # 戦略2: リモートとの競合解決
+        echo "Fetching and merging remote changes..."
+        git fetch origin
+        
+        # マージの試行
+        if git merge origin/${{ github.ref_name }} --no-edit; then
+          echo "Merge successful, attempting push again..."
+          if git push origin ${{ github.ref_name }}; then
+            echo "✅ Push successful after merge"
+            exit 0
+          fi
+        else
+          echo "Merge failed, trying reset strategy..."
+          git merge --abort 2>/dev/null || true
+        fi
+        
+        # 戦略3: 強制的な解決（データファイルを優先）
+        echo "Using force resolution strategy..."
+        
+        # 現在のコミットを一時的に保存
+        TEMP_COMMIT=$(git rev-parse HEAD)
+        
+        # リモートのHEADをリセット
+        git reset --hard origin/${{ github.ref_name }}
+        
+        # 再度変更をステージングして強制コミット
+        git add data/
+        git commit -m "$COMMIT_MESSAGE" || {
+          echo "No changes to commit after reset"
+          exit 0
+        }
+        
+        # 強制プッシュ（with lease for safety）
+        if git push --force-with-lease origin ${{ github.ref_name }}; then
+          echo "✅ Push successful with force-with-lease"
+          exit 0
+        fi
+        
+        # 戦略4: 最終手段の強制プッシュ
+        echo "Attempting final force push..."
+        if git push --force origin ${{ github.ref_name }}; then
+          echo "✅ Push successful with force push"
+          exit 0
+        fi
+        
+        echo "❌ All push strategies failed"
+        echo "Final git status:"
+        git status
+        echo "Remote refs:"
+        git ls-remote origin
+        exit 1
     
     - name: Generate summary
       run: |
@@ -206,13 +298,15 @@ jobs:
         echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
         echo "| Execution Time | $(date '+%Y-%m-%d %H:%M:%S JST') |" >> $GITHUB_STEP_SUMMARY
         echo "| Data Changed | ${{ steps.check-changes.outputs.changed }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Changed Files | ${{ steps.check-changes.outputs.changed_files }} |" >> $GITHUB_STEP_SUMMARY
         echo "| ChromeDriver | Auto-detected compatible version |" >> $GITHUB_STEP_SUMMARY
         echo "| Processing Mode | Parallel (High-Speed) |" >> $GITHUB_STEP_SUMMARY
         echo "| Target Items | ${{ env.TARGET_ITEMS }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Git Strategy | Robust conflict resolution |" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         
         if [ "${{ steps.check-changes.outputs.changed }}" == "true" ]; then
-          echo "**Price update completed successfully!**" >> $GITHUB_STEP_SUMMARY
+          echo "**Price update and git push completed successfully!**" >> $GITHUB_STEP_SUMMARY
         else
           echo "**No changes detected (system operating normally)**" >> $GITHUB_STEP_SUMMARY
         fi
@@ -228,4 +322,9 @@ jobs:
         echo "- ChromeDriver version: $(chromedriver --version 2>/dev/null || echo 'Not found')" >> $GITHUB_STEP_SUMMARY
         echo "- Available memory: $(free -h | grep Mem | awk '{print $7}')" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "**Solution**: ChromeDriver compatibility issues resolved with auto-detection." >> $GITHUB_STEP_SUMMARY
+        echo "### Git Status" >> $GITHUB_STEP_SUMMARY
+        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+        git status 2>/dev/null || echo "Git status unavailable" >> $GITHUB_STEP_SUMMARY
+        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Solution**: Check git conflict resolution in the workflow logs." >> $GITHUB_STEP_SUMMARY
