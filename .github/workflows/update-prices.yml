@@ -79,25 +79,28 @@ jobs:
         TARGET_ITEMS: ${{ github.event.inputs.target_items || 'ALL' }}
         PYTHONPATH: ${{ github.workspace }}
     
+    # 🔄 個別アイテム価格履歴更新（分離されたスクリプト）
     - name: Update individual item price history
       run: |
-        echo "Starting individual item price history update at $(date '+%Y-%m-%d %H:%M:%S JST')"
+        echo "🔄 Starting individual item price history update at $(date '+%Y-%m-%d %H:%M:%S JST')"
         python scripts/historical_price_tracker.py
-        echo "Individual item price history update completed at $(date '+%Y-%m-%d %H:%M:%S JST')"
+        echo "✅ Individual item price history update completed at $(date '+%Y-%m-%d %H:%M:%S JST')"
       env:
         PYTHONPATH: ${{ github.workspace }}
     
+    # 📊 総価格集計処理（分離されたスクリプト）
     - name: Aggregate total price data
       run: |
-        echo "Starting total price aggregation at $(date '+%Y-%m-%d %H:%M:%S JST')"
+        echo "📊 Starting total price aggregation at $(date '+%Y-%m-%d %H:%M:%S JST')"
         python scripts/total_price_aggregator.py
-        echo "Total price aggregation completed at $(date '+%Y-%m-%d %H:%M:%S JST')"
+        echo "✅ Total price aggregation completed at $(date '+%Y-%m-%d %H:%M:%S JST')"
       env:
         PYTHONPATH: ${{ github.workspace }}
     
+    # 📈 個別アイテムチャートデータ出力
     - name: Export individual item chart data
       run: |
-        echo "Exporting individual item chart data for web display"
+        echo "📈 Exporting individual item chart data for web display"
         python -c "
         import sys
         sys.path.append('scripts')
@@ -108,6 +111,7 @@ jobs:
         try:
             tracker = HistoricalPriceTracker()
             
+            # equipment_prices.jsonが存在するかチェック
             if not os.path.exists('data/equipment_prices.json'):
                 print('equipment_prices.json not found, skipping chart export')
                 sys.exit(0)
@@ -121,7 +125,7 @@ jobs:
             print(f'Starting chart export for {total_items} items...')
             
             for i, item_id in enumerate(data.keys()):
-                if i % 50 == 0:
+                if i % 50 == 0:  # 進捗表示
                     print(f'Progress: {i}/{total_items} items processed')
                 
                 for interval in ['1hour', '12hour', '1day']:
@@ -132,43 +136,48 @@ jobs:
                         print(f'Error exporting chart for item {item_id} ({interval}): {e}')
                         continue
             
-            print(f'Exported {exported} individual item chart data files')
+            print(f'✅ Exported {exported} individual item chart data files')
             
         except Exception as e:
-            print(f'Error in chart export: {e}')
+            print(f'❌ Error in chart export: {e}')
             sys.exit(1)
         "
       env:
         PYTHONPATH: ${{ github.workspace }}
     
+    # 📊 総価格チャートデータ出力確認
     - name: Verify total price chart data
       run: |
-        echo "Verifying total price chart data files"
+        echo "📊 Verifying total price chart data files"
         
         for interval in 1hour 12hour 1day; do
           file="data/price_history/total_price_${interval}.json"
           if [ -f "$file" ]; then
             size=$(stat -c%s "$file")
-            echo "${file}: ${size} bytes"
+            echo "✅ ${file}: ${size} bytes"
             
+            # JSONファイルの妥当性チェック
             if python -c "import json; json.load(open('$file'))"; then
               echo "   JSON format: valid"
             else
-              echo "   JSON format: invalid"
+              echo "   ❌ JSON format: invalid"
             fi
           else
-            echo "${file}: not found"
+            echo "❌ ${file}: not found"
           fi
         done
     
+    # 🔍 改善された変更検出（price_historyとequipment_pricesの両方）
     - name: Check for changes
       id: check-changes
       run: |
+        # データディレクトリの変更をチェック
         if [ -n "$(git status --porcelain data/)" ]; then
           echo "changed=true" >> $GITHUB_OUTPUT
-          echo "Data changes detected:"
+          echo "✅ Data changes detected:"
           git status --short data/
           
+          # 詳細な変更情報を取得
           EQUIPMENT_CHANGED=$(git status --porcelain data/equipment_prices.json | wc -l)
           HISTORY_CHANGED=$(git status --porcelain data/price_history/ | wc -l)
           
@@ -177,22 +186,25 @@ jobs:
           
         else
           echo "changed=false" >> $GITHUB_OUTPUT
-          echo "No changes detected in data directory"
+          echo "ℹ️ No changes detected in data directory"
           echo "equipment_changed=0" >> $GITHUB_OUTPUT
           echo "history_changed=0" >> $GITHUB_OUTPUT
         fi
     
+    # 📤 改善されたコミット（分離されたスクリプト対応）
     - name: Commit and push changes
       if: steps.check-changes.outputs.changed == 'true'
       run: |
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action Bot"
         
+        # 変更の詳細情報を取得
         UPDATED_COUNT=$(git diff data/equipment_prices.json | grep -c '^+.*item_price' || echo "0")
         INDIVIDUAL_CHARTS=$(find data/price_history -name "*_1hour.json" ! -name "total_price_*" 2>/dev/null | wc -l || echo "0")
         TOTAL_CHARTS=$(find data/price_history -name "total_price_*.json" 2>/dev/null | wc -l || echo "0")
         CURRENT_TIME=$(date '+%Y-%m-%d %H:%M:%S JST')
         
+        # 統計情報の生成
         if [ -f "data/equipment_prices.json" ]; then
           TOTAL_ITEMS=$(python -c "import json; print(len(json.load(open('data/equipment_prices.json'))))" 2>/dev/null || echo "0")
         else
@@ -200,87 +212,89 @@ jobs:
         fi
         
         git add data/
-        git commit -m "Auto-update: Equipment prices and historical data
+        git commit -m "Auto-update: Equipment prices & historical data (分離スクリプト対応)
 
-Update Summary:
+📊 Update Summary:
 - Update time: ${CURRENT_TIME}
 - Total items: ${TOTAL_ITEMS}
 - Updated items: ${UPDATED_COUNT}
 - Individual charts: ${INDIVIDUAL_CHARTS}
 - Total price charts: ${TOTAL_CHARTS}
 
-Architecture:
+🔧 Architecture:
 - Individual item history: scripts/historical_price_tracker.py
 - Total price aggregation: scripts/total_price_aggregator.py
-- Automated by GitHub Actions"
+- Automated by GitHub Actions (分離スクリプト版)"
         
         git push origin ${{ github.ref_name }}
         
-        echo "Successfully updated ${UPDATED_COUNT} items with ${INDIVIDUAL_CHARTS} individual charts and ${TOTAL_CHARTS} total price charts"
+        echo "✅ Successfully updated ${UPDATED_COUNT} items with ${INDIVIDUAL_CHARTS} individual charts and ${TOTAL_CHARTS} total price charts"
     
+    # 📈 詳細な実行サマリー生成
     - name: Generate detailed summary
       run: |
-        echo "## MapleStory Equipment Price Auto Update Results" >> $GITHUB_STEP_SUMMARY
+        echo "## 🍁 MapleStory Equipment Price Auto Update Results (分離スクリプト版)" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### Basic Information" >> $GITHUB_STEP_SUMMARY
+        echo "### 📊 基本情報" >> $GITHUB_STEP_SUMMARY
         echo "| Item | Result |" >> $GITHUB_STEP_SUMMARY
         echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
-        echo "| Execution Time | $(date '+%Y-%m-%d %H:%M:%S JST') |" >> $GITHUB_STEP_SUMMARY
-        echo "| Data Changed | ${{ steps.check-changes.outputs.changed }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| Target Items | ${{ github.event.inputs.target_items || 'ALL' }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| Workflow Run ID | ${{ github.run_id }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| 実行時刻 | $(date '+%Y-%m-%d %H:%M:%S JST') |" >> $GITHUB_STEP_SUMMARY
+        echo "| データ変更 | ${{ steps.check-changes.outputs.changed }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| 対象アイテム | ${{ env.TARGET_ITEMS }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| ワークフロー実行ID | ${{ github.run_id }} |" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### Script Configuration" >> $GITHUB_STEP_SUMMARY
-        echo "| Script | Purpose | Status |" >> $GITHUB_STEP_SUMMARY
-        echo "|--------|---------|--------|" >> $GITHUB_STEP_SUMMARY
-        echo "| update_prices.py | Main price update | Executed |" >> $GITHUB_STEP_SUMMARY
-        echo "| historical_price_tracker.py | Individual item price history | Executed |" >> $GITHUB_STEP_SUMMARY
-        echo "| total_price_aggregator.py | Total price aggregation | Executed |" >> $GITHUB_STEP_SUMMARY
+        
+        echo "### 🔧 スクリプト構成" >> $GITHUB_STEP_SUMMARY
+        echo "| スクリプト | 用途 | 状態 |" >> $GITHUB_STEP_SUMMARY
+        echo "|-----------|------|------|" >> $GITHUB_STEP_SUMMARY
+        echo "| historical_price_tracker.py | 個別アイテム価格履歴 | ✅ 実行済み |" >> $GITHUB_STEP_SUMMARY
+        echo "| total_price_aggregator.py | 総価格集計 | ✅ 実行済み |" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         
         if [ "${{ steps.check-changes.outputs.changed }}" == "true" ]; then
-          echo "### Update Results" >> $GITHUB_STEP_SUMMARY
-          echo "- Price data updates: ${{ steps.check-changes.outputs.equipment_changed }} files" >> $GITHUB_STEP_SUMMARY
-          echo "- History data updates: ${{ steps.check-changes.outputs.history_changed }} files" >> $GITHUB_STEP_SUMMARY
-          echo "- Chart data generation: Completed" >> $GITHUB_STEP_SUMMARY
-          echo "- Commit and push: Completed" >> $GITHUB_STEP_SUMMARY
+          echo "### ✅ 更新結果" >> $GITHUB_STEP_SUMMARY
+          echo "- 価格データ更新: ${{ steps.check-changes.outputs.equipment_changed }}ファイル" >> $GITHUB_STEP_SUMMARY
+          echo "- 履歴データ更新: ${{ steps.check-changes.outputs.history_changed }}ファイル" >> $GITHUB_STEP_SUMMARY
+          echo "- チャートデータ生成: 完了" >> $GITHUB_STEP_SUMMARY
+          echo "- コミット・プッシュ: 完了" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Price update and chart generation completed successfully!" >> $GITHUB_STEP_SUMMARY
+          echo "🎉 **価格更新とチャート生成が正常に完了しました！**" >> $GITHUB_STEP_SUMMARY
         else
-          echo "### Execution Results" >> $GITHUB_STEP_SUMMARY
-          echo "- No changes detected (no price fluctuations)" >> $GITHUB_STEP_SUMMARY
-          echo "- System is operating normally" >> $GITHUB_STEP_SUMMARY
+          echo "### ℹ️ 実行結果" >> $GITHUB_STEP_SUMMARY
+          echo "- 変更なし（価格に変動がありませんでした）" >> $GITHUB_STEP_SUMMARY
+          echo "- システムは正常に動作しています" >> $GITHUB_STEP_SUMMARY
         fi
         
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### Generated Files" >> $GITHUB_STEP_SUMMARY
-        echo "- data/equipment_prices.json: Latest price data" >> $GITHUB_STEP_SUMMARY
-        echo "- data/price_history/history_*.json: Individual item history" >> $GITHUB_STEP_SUMMARY
-        echo "- data/price_history/total_price_*.json: Total price history" >> $GITHUB_STEP_SUMMARY
-        echo "- data/price_history/*_*.json: Individual chart data" >> $GITHUB_STEP_SUMMARY
+        echo "### 📁 生成ファイル" >> $GITHUB_STEP_SUMMARY
+        echo "- \`data/equipment_prices.json\`: 最新価格データ" >> $GITHUB_STEP_SUMMARY
+        echo "- \`data/price_history/history_*.json\`: 個別アイテム履歴" >> $GITHUB_STEP_SUMMARY
+        echo "- \`data/price_history/total_price_*.json\`: 総価格履歴" >> $GITHUB_STEP_SUMMARY
+        echo "- \`data/price_history/*_*.json\`: 個別チャートデータ" >> $GITHUB_STEP_SUMMARY
 
+    # 🚨 エラー時の診断情報
     - name: Collect diagnostic info on failure
       if: failure()
       run: |
-        echo "Workflow execution failed" >> $GITHUB_STEP_SUMMARY
+        echo "🚨 ワークフロー実行中にエラーが発生しました" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### Diagnostic Information" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "Execution time: $(date '+%Y-%m-%d %H:%M:%S JST')" >> $GITHUB_STEP_SUMMARY
-        echo "Python version: $(python --version)" >> $GITHUB_STEP_SUMMARY
-        echo "Working directory: $(pwd)" >> $GITHUB_STEP_SUMMARY
-        echo "Available space: $(df -h . | tail -1)" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 📋 診断情報" >> $GITHUB_STEP_SUMMARY
+        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY  # ← ここが問題！
+        echo "実行時刻: $(date '+%Y-%m-%d %H:%M:%S JST')" >> $GITHUB_STEP_SUMMARY
+        echo "Python版本: $(python --version)" >> $GITHUB_STEP_SUMMARY
+        echo "作業ディレクトリ: $(pwd)" >> $GITHUB_STEP_SUMMARY
+        echo "利用可能スペース: $(df -h . | tail -1)" >> $GITHUB_STEP_SUMMARY
         
         if [ -d "data" ]; then
-          echo "Data directory structure:" >> $GITHUB_STEP_SUMMARY
+          echo "dataディレクトリ構造:" >> $GITHUB_STEP_SUMMARY
           ls -la data/ >> $GITHUB_STEP_SUMMARY
         fi
         
         if [ -d "scripts" ]; then
-          echo "Scripts directory structure:" >> $GITHUB_STEP_SUMMARY
+          echo "scriptsディレクトリ構造:" >> $GITHUB_STEP_SUMMARY
           ls -la scripts/ >> $GITHUB_STEP_SUMMARY
         fi
         
+        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY  # ← ここも問題！
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "Solution: Check logs and verify script files are properly placed." >> $GITHUB_STEP_SUMMARY
+        echo "❗ **解決方法**: ログを確認し、スクリプトファイルが正しく配置されているか確認してください。" >> $GITHUB_STEP_SUMMARY
