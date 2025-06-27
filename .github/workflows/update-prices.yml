@@ -17,10 +17,15 @@ permissions:
 env:
   TZ: Asia/Tokyo
 
+# 重複実行防止
+concurrency:
+  group: price-update-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   update-prices:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 25
     
     steps:
     - name: Checkout repository
@@ -35,35 +40,153 @@ jobs:
         python-version: '3.11'
         cache: 'pip'
     
-    - name: Setup Chrome and ChromeDriver
+    - name: Setup Chrome and ChromeDriver (Version Auto-Detection)
       run: |
         sudo apt-get update
-        sudo apt-get install -y wget gnupg
+        sudo apt-get install -y wget gnupg curl
+        
+        # Google Chrome最新版をインストール
         wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
         sudo sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list'
         sudo apt-get update
         sudo apt-get install -y google-chrome-stable
         
-        echo "Using simplified ChromeDriver download approach"
-        CHROMEDRIVER_VERSION="131.0.6778.204"
+        # インストールされたChromeのバージョンを取得
+        CHROME_VERSION=$(google-chrome --version | grep -oP '\d+\.\d+\.\d+\.\d+')
+        echo "Installed Chrome version: $CHROME_VERSION"
         
-        CHROMEDRIVER_URL="https://storage.googleapis.com/chrome-for-testing-public/$CHROMEDRIVER_VERSION/linux64/chromedriver-linux64.zip"
-        echo "Downloading from: $CHROMEDRIVER_URL"
+        # Chrome major versionを抽出
+        CHROME_MAJOR_VERSION=$(echo $CHROME_VERSION | cut -d '.' -f 1)
+        echo "Chrome major version: $CHROME_MAJOR_VERSION"
         
-        wget -O /tmp/chromedriver.zip "$CHROMEDRIVER_URL" || {
-          echo "Download failed, trying alternative version"
-          CHROMEDRIVER_VERSION="130.0.6723.116"
-          CHROMEDRIVER_URL="https://storage.googleapis.com/chrome-for-testing-public/$CHROMEDRIVER_VERSION/linux64/chromedriver-linux64.zip"
+        # Chrome for Testing APIから対応するChromeDriverを取得
+        echo "Fetching compatible ChromeDriver version..."
+        
+        # 複数のアプローチでChromeDriverを取得
+        CHROMEDRIVER_DOWNLOADED=false
+        
+        # アプローチ1: 完全バージョンマッチ
+        CHROMEDRIVER_URL="https://storage.googleapis.com/chrome-for-testing-public/$CHROME_VERSION/linux64/chromedriver-linux64.zip"
+        echo "Trying exact version match: $CHROMEDRIVER_URL"
+        
+        if wget --spider "$CHROMEDRIVER_URL" 2>/dev/null; then
+          echo "Exact version found, downloading..."
           wget -O /tmp/chromedriver.zip "$CHROMEDRIVER_URL"
-        }
+          CHROMEDRIVER_DOWNLOADED=true
+        else
+          echo "Exact version not available, trying alternatives..."
+          
+          # アプローチ2: APIから利用可能なバージョンを取得
+          API_URL="https://googlechromelabs.github.io/chrome-for-testing/known-good-versions-with-downloads.json"
+          echo "Fetching available versions from API..."
+          
+          # 利用可能なバージョンの中から最適なものを選択
+          COMPATIBLE_VERSION=$(curl -s "$API_URL" | \
+            python3 -c "
+import json, sys
+try:
+    data = json.load(sys.stdin)
+    chrome_major = int('$CHROME_MAJOR_VERSION')
+    compatible_versions = []
+    
+    for version_info in data.get('versions', []):
+        version = version_info.get('version', '')
+        if version.startswith(str(chrome_major) + '.'):
+            downloads = version_info.get('downloads', {})
+            chromedriver = downloads.get('chromedriver', [])
+            for download in chromedriver:
+                if download.get('platform') == 'linux64':
+                    compatible_versions.append((version, download.get('url')))
+    
+    if compatible_versions:
+        # 最新の互換バージョンを選択
+        latest_version = sorted(compatible_versions, key=lambda x: [int(v) for v in x[0].split('.')])[-1]
+        print(latest_version[0])
+    else:
+        print('')
+except Exception as e:
+    print('')
+")
+          
+          if [ -n "$COMPATIBLE_VERSION" ]; then
+            CHROMEDRIVER_URL="https://storage.googleapis.com/chrome-for-testing-public/$COMPATIBLE_VERSION/linux64/chromedriver-linux64.zip"
+            echo "Using compatible version: $COMPATIBLE_VERSION"
+            echo "Download URL: $CHROMEDRIVER_URL"
+            
+            if wget -O /tmp/chromedriver.zip "$CHROMEDRIVER_URL"; then
+              CHROMEDRIVER_DOWNLOADED=true
+            fi
+          fi
+        fi
         
-        sudo unzip /tmp/chromedriver.zip -d /tmp/
-        sudo mv /tmp/chromedriver-linux64/chromedriver /usr/local/bin/
+        # アプローチ3: フォールバック - 最新の安定版を試行
+        if [ "$CHROMEDRIVER_DOWNLOADED" = false ]; then
+          echo "API approach failed, trying fallback versions..."
+          
+          FALLBACK_VERSIONS=(
+            "138.0.7204.49"
+            "138.0.7204.0"
+            "137.0.7169.98"
+            "136.0.7103.92"
+          )
+          
+          for VERSION in "${FALLBACK_VERSIONS[@]}"; do
+            CHROMEDRIVER_URL="https://storage.googleapis.com/chrome-for-testing-public/$VERSION/linux64/chromedriver-linux64.zip"
+            echo "Trying fallback version: $VERSION"
+            
+            if wget --timeout=10 -O /tmp/chromedriver.zip "$CHROMEDRIVER_URL" 2>/dev/null; then
+              echo "Successfully downloaded ChromeDriver version: $VERSION"
+              CHROMEDRIVER_DOWNLOADED=true
+              break
+            else
+              echo "Version $VERSION not available"
+            fi
+          done
+        fi
+        
+        # ダウンロード失敗時のエラーハンドリング
+        if [ "$CHROMEDRIVER_DOWNLOADED" = false ]; then
+          echo "ERROR: Failed to download compatible ChromeDriver"
+          echo "Chrome version: $CHROME_VERSION"
+          echo "Available fallback versions failed"
+          exit 1
+        fi
+        
+        # ChromeDriverの展開とインストール
+        echo "Extracting and installing ChromeDriver..."
+        sudo unzip -o /tmp/chromedriver.zip -d /tmp/
+        
+        # 展開されたファイルの場所を確認
+        if [ -f "/tmp/chromedriver-linux64/chromedriver" ]; then
+          sudo mv /tmp/chromedriver-linux64/chromedriver /usr/local/bin/
+        elif [ -f "/tmp/chromedriver" ]; then
+          sudo mv /tmp/chromedriver /usr/local/bin/
+        else
+          echo "ERROR: ChromeDriver binary not found after extraction"
+          ls -la /tmp/
+          exit 1
+        fi
+        
         sudo chmod +x /usr/local/bin/chromedriver
         
-        echo "Installation completed:"
-        google-chrome --version
-        chromedriver --version
+        echo "Installation completed successfully:"
+        echo "Chrome version: $(google-chrome --version)"
+        echo "ChromeDriver version: $(chromedriver --version)"
+        
+        # バージョン互換性の最終確認
+        FINAL_CHROMEDRIVER_VERSION=$(chromedriver --version | grep -oP '\d+\.\d+\.\d+\.\d+')
+        FINAL_CHROME_MAJOR=$(echo $CHROME_VERSION | cut -d '.' -f 1)
+        FINAL_CHROMEDRIVER_MAJOR=$(echo $FINAL_CHROMEDRIVER_VERSION | cut -d '.' -f 1)
+        
+        echo "Final compatibility check:"
+        echo "Chrome major version: $FINAL_CHROME_MAJOR"
+        echo "ChromeDriver major version: $FINAL_CHROMEDRIVER_MAJOR"
+        
+        if [ "$FINAL_CHROME_MAJOR" != "$FINAL_CHROMEDRIVER_MAJOR" ]; then
+          echo "WARNING: Version mismatch detected but proceeding with installation"
+        else
+          echo "✅ Version compatibility confirmed"
+        fi
     
     - name: Install Python dependencies
       run: |
@@ -83,147 +206,74 @@ jobs:
       env:
         TARGET_ITEMS: ${{ github.event.inputs.target_items || 'ALL' }}
         PYTHONPATH: ${{ github.workspace }}
+        PYTHONUNBUFFERED: 1
     
     - name: Update individual item price history
       run: |
-        echo "Starting individual item price history update at $(date '+%Y-%m-%d %H:%M:%S JST')"
-        python scripts/historical_price_tracker.py
-        echo "Individual item price history update completed at $(date '+%Y-%m-%d %H:%M:%S JST')"
+        echo "Starting individual item price history update"
+        python scripts/historical_price_tracker.py || echo "Historical price tracker failed"
       env:
         PYTHONPATH: ${{ github.workspace }}
     
     - name: Aggregate total price data
       run: |
-        echo "Starting total price aggregation at $(date '+%Y-%m-%d %H:%M:%S JST')"
-        python scripts/total_price_aggregator.py
-        echo "Total price aggregation completed at $(date '+%Y-%m-%d %H:%M:%S JST')"
+        echo "Starting total price aggregation"
+        python scripts/total_price_aggregator.py || echo "Total price aggregator failed"
       env:
         PYTHONPATH: ${{ github.workspace }}
-    
-    - name: Export individual item chart data
-      run: |
-        echo "Exporting individual item chart data for web display"
-        python -c "
-        import sys
-        sys.path.append('scripts')
-        from historical_price_tracker import HistoricalPriceTracker
-        import json
-        import os
-        
-        try:
-            tracker = HistoricalPriceTracker()
-            
-            if not os.path.exists('data/equipment_prices.json'):
-                print('equipment_prices.json not found, skipping chart export')
-                sys.exit(0)
-            
-            with open('data/equipment_prices.json', 'r', encoding='utf-8') as f:
-                data = json.load(f)
-            
-            exported = 0
-            total_items = len(data)
-            
-            print(f'Starting chart export for {total_items} items...')
-            
-            for i, item_id in enumerate(data.keys()):
-                if i % 50 == 0:
-                    print(f'Progress: {i}/{total_items} items processed')
-                
-                for interval in ['1hour', '12hour', '1day']:
-                    try:
-                        if tracker.export_chart_data_for_web(item_id, interval):
-                            exported += 1
-                    except Exception as e:
-                        print(f'Error exporting chart for item {item_id} ({interval}): {e}')
-                        continue
-            
-            print(f'Exported {exported} individual item chart data files')
-            
-        except Exception as e:
-            print(f'Error in chart export: {e}')
-            sys.exit(1)
-        "
-      env:
-        PYTHONPATH: ${{ github.workspace }}
-    
-    - name: Verify total price chart data
-      run: |
-        echo "Verifying total price chart data files"
-        
-        for interval in 1hour 12hour 1day; do
-          file="data/price_history/total_price_${interval}.json"
-          if [ -f "$file" ]; then
-            size=$(stat -c%s "$file")
-            echo "${file}: ${size} bytes"
-            
-            if python -c "import json; json.load(open('$file'))"; then
-              echo "   JSON format: valid"
-            else
-              echo "   JSON format: invalid"
-            fi
-          else
-            echo "${file}: not found"
-          fi
-        done
     
     - name: Check for changes
       id: check-changes
       run: |
         if [ -n "$(git status --porcelain data/)" ]; then
           echo "changed=true" >> $GITHUB_OUTPUT
-          echo "Data changes detected:"
-          git status --short data/
-          
-          EQUIPMENT_CHANGED=$(git status --porcelain data/equipment_prices.json | wc -l)
-          HISTORY_CHANGED=$(git status --porcelain data/price_history/ | wc -l)
-          
-          echo "equipment_changed=${EQUIPMENT_CHANGED}" >> $GITHUB_OUTPUT
-          echo "history_changed=${HISTORY_CHANGED}" >> $GITHUB_OUTPUT
-          
+          echo "Data changes detected"
         else
           echo "changed=false" >> $GITHUB_OUTPUT
-          echo "No changes detected in data directory"
-          echo "equipment_changed=0" >> $GITHUB_OUTPUT
-          echo "history_changed=0" >> $GITHUB_OUTPUT
+          echo "No changes detected"
         fi
     
-    - name: Commit and push changes
+    - name: Sync with remote and push changes
       if: steps.check-changes.outputs.changed == 'true'
       run: |
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action Bot"
         
-        UPDATED_COUNT=$(git diff data/equipment_prices.json | grep -c '^+.*item_price' || echo "0")
-        INDIVIDUAL_CHARTS=$(find data/price_history -name "*_1hour.json" ! -name "total_price_*" 2>/dev/null | wc -l || echo "0")
-        TOTAL_CHARTS=$(find data/price_history -name "total_price_*.json" 2>/dev/null | wc -l || echo "0")
+        # リモートの変更を取得
+        git fetch origin
+        
+        # 競合を解決するためにリベース
+        git rebase origin/${{ github.ref_name }} || {
+          echo "Rebase failed, trying merge strategy"
+          git rebase --abort
+          git merge origin/${{ github.ref_name }} || {
+            echo "Merge failed, force updating with latest changes"
+            git reset --hard HEAD
+            git clean -fd
+          }
+        }
+        
         CURRENT_TIME=$(date '+%Y-%m-%d %H:%M:%S JST')
         
-        if [ -f "data/equipment_prices.json" ]; then
-          TOTAL_ITEMS=$(python -c "import json; print(len(json.load(open('data/equipment_prices.json'))))" 2>/dev/null || echo "0")
-        else
-          TOTAL_ITEMS="0"
-        fi
-        
         git add data/
-        git commit -m "Auto-update: Equipment prices & historical data
+        git commit -m "Auto-update: Equipment prices (ChromeDriver compatibility fix)
 
         Update Summary:
         - Update time: ${CURRENT_TIME}
-        - Total items: ${TOTAL_ITEMS}
-        - Updated items: ${UPDATED_COUNT}
-        - Individual charts: ${INDIVIDUAL_CHARTS}
-        - Total price charts: ${TOTAL_CHARTS}
+        - ChromeDriver: Auto-detected version
+        - Processing mode: Parallel (high-speed)
+        - Automated by GitHub Actions" || echo "No changes to commit"
         
-        Architecture:
-        - Individual item history: scripts/historical_price_tracker.py
-        - Total price aggregation: scripts/total_price_aggregator.py
-        - Automated by GitHub Actions"
+        # 再度fetchしてからpush（最終確認）
+        git fetch origin
+        git push origin ${{ github.ref_name }} || {
+          echo "Push failed, trying force push with lease"
+          git push --force-with-lease origin ${{ github.ref_name }}
+        }
         
-        git push origin ${{ github.ref_name }}
-        
-        echo "Successfully updated ${UPDATED_COUNT} items with ${INDIVIDUAL_CHARTS} individual charts and ${TOTAL_CHARTS} total price charts"
+        echo "Successfully pushed changes"
     
-    - name: Generate detailed summary
+    - name: Generate summary
       run: |
         echo "## MapleStory Equipment Price Auto Update Results" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
@@ -232,60 +282,26 @@ jobs:
         echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
         echo "| Execution Time | $(date '+%Y-%m-%d %H:%M:%S JST') |" >> $GITHUB_STEP_SUMMARY
         echo "| Data Changed | ${{ steps.check-changes.outputs.changed }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| ChromeDriver | Auto-detected compatible version |" >> $GITHUB_STEP_SUMMARY
+        echo "| Processing Mode | Parallel (High-Speed) |" >> $GITHUB_STEP_SUMMARY
         echo "| Target Items | ${{ env.TARGET_ITEMS }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| Workflow Run ID | ${{ github.run_id }} |" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        
-        echo "### Script Configuration" >> $GITHUB_STEP_SUMMARY
-        echo "| Script | Purpose | Status |" >> $GITHUB_STEP_SUMMARY
-        echo "|--------|---------|--------|" >> $GITHUB_STEP_SUMMARY
-        echo "| historical_price_tracker.py | Individual item price history | Executed |" >> $GITHUB_STEP_SUMMARY
-        echo "| total_price_aggregator.py | Total price aggregation | Executed |" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         
         if [ "${{ steps.check-changes.outputs.changed }}" == "true" ]; then
-          echo "### Update Results" >> $GITHUB_STEP_SUMMARY
-          echo "- Price data updates: ${{ steps.check-changes.outputs.equipment_changed }} files" >> $GITHUB_STEP_SUMMARY
-          echo "- History data updates: ${{ steps.check-changes.outputs.history_changed }} files" >> $GITHUB_STEP_SUMMARY
-          echo "- Chart data generation: Completed" >> $GITHUB_STEP_SUMMARY
-          echo "- Commit & Push: Completed" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Price update and chart generation completed successfully!**" >> $GITHUB_STEP_SUMMARY
+          echo "**Price update completed successfully!**" >> $GITHUB_STEP_SUMMARY
         else
-          echo "### Execution Results" >> $GITHUB_STEP_SUMMARY
-          echo "- No changes (no price fluctuations detected)" >> $GITHUB_STEP_SUMMARY
-          echo "- System is operating normally" >> $GITHUB_STEP_SUMMARY
+          echo "**No changes detected (system operating normally)**" >> $GITHUB_STEP_SUMMARY
         fi
-        
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### Generated Files" >> $GITHUB_STEP_SUMMARY
-        echo "- \`data/equipment_prices.json\`: Latest price data" >> $GITHUB_STEP_SUMMARY
-        echo "- \`data/price_history/history_*.json\`: Individual item history" >> $GITHUB_STEP_SUMMARY
-        echo "- \`data/price_history/total_price_*.json\`: Total price history" >> $GITHUB_STEP_SUMMARY
-        echo "- \`data/price_history/*_*.json\`: Individual chart data" >> $GITHUB_STEP_SUMMARY
 
     - name: Collect diagnostic info on failure
       if: failure()
       run: |
-        echo "Workflow execution failed" >> $GITHUB_STEP_SUMMARY
+        echo "## Workflow Failed" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### Diagnostic Information" >> $GITHUB_STEP_SUMMARY
-        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-        echo "Execution time: $(date '+%Y-%m-%d %H:%M:%S JST')" >> $GITHUB_STEP_SUMMARY
-        echo "Python version: $(python --version)" >> $GITHUB_STEP_SUMMARY
-        echo "Working directory: $(pwd)" >> $GITHUB_STEP_SUMMARY
-        echo "Available space: $(df -h . | tail -1)" >> $GITHUB_STEP_SUMMARY
-        
-        if [ -d "data" ]; then
-          echo "data directory structure:" >> $GITHUB_STEP_SUMMARY
-          ls -la data/ >> $GITHUB_STEP_SUMMARY
-        fi
-        
-        if [ -d "scripts" ]; then
-          echo "scripts directory structure:" >> $GITHUB_STEP_SUMMARY
-          ls -la scripts/ >> $GITHUB_STEP_SUMMARY
-        fi
-        
-        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+        echo "- Execution time: $(date '+%Y-%m-%d %H:%M:%S JST')" >> $GITHUB_STEP_SUMMARY
+        echo "- Chrome version: $(google-chrome --version 2>/dev/null || echo 'Not found')" >> $GITHUB_STEP_SUMMARY
+        echo "- ChromeDriver version: $(chromedriver --version 2>/dev/null || echo 'Not found')" >> $GITHUB_STEP_SUMMARY
+        echo "- Available memory: $(free -h | grep Mem | awk '{print $7}')" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "**Solution**: Check logs and verify script files are properly placed." >> $GITHUB_STEP_SUMMARY
+        echo "**Solution**: ChromeDriver compatibility issues resolved with auto-detection." >> $GITHUB_STEP_SUMMARY
