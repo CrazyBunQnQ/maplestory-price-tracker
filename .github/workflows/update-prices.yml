@@ -220,83 +220,67 @@ Architecture:
     
     - name: Generate detailed summary
       run: |
-        {
-          echo "## MapleStory Equipment Price Auto Update Results"
-          echo ""
-          echo "### Basic Information"
-          echo "| Item | Result |"
-          echo "|------|--------|"
-          echo "| Execution Time | $(date '+%Y-%m-%d %H:%M:%S JST') |"
-          echo "| Data Changed | ${{ steps.check-changes.outputs.changed }} |"
-          echo "| Target Items | ${{ github.event.inputs.target_items || 'ALL' }} |"
-          echo "| Workflow Run ID | ${{ github.run_id }} |"
-          echo ""
-          echo "### Script Configuration"
-          echo "| Script | Purpose | Status |"
-          echo "|--------|---------|--------|"
-          echo "| update_prices.py | Main price update | Executed |"
-          echo "| historical_price_tracker.py | Individual item price history | Executed |"
-          echo "| total_price_aggregator.py | Total price aggregation | Executed |"
-          echo ""
-        } >> $GITHUB_STEP_SUMMARY
+        echo "## MapleStory Equipment Price Auto Update Results" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Basic Information" >> $GITHUB_STEP_SUMMARY
+        echo "| Item | Result |" >> $GITHUB_STEP_SUMMARY
+        echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
+        echo "| Execution Time | $(date '+%Y-%m-%d %H:%M:%S JST') |" >> $GITHUB_STEP_SUMMARY
+        echo "| Data Changed | ${{ steps.check-changes.outputs.changed }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Target Items | ${{ github.event.inputs.target_items || 'ALL' }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Workflow Run ID | ${{ github.run_id }} |" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Script Configuration" >> $GITHUB_STEP_SUMMARY
+        echo "| Script | Purpose | Status |" >> $GITHUB_STEP_SUMMARY
+        echo "|--------|---------|--------|" >> $GITHUB_STEP_SUMMARY
+        echo "| update_prices.py | Main price update | Executed |" >> $GITHUB_STEP_SUMMARY
+        echo "| historical_price_tracker.py | Individual item price history | Executed |" >> $GITHUB_STEP_SUMMARY
+        echo "| total_price_aggregator.py | Total price aggregation | Executed |" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
         
         if [ "${{ steps.check-changes.outputs.changed }}" == "true" ]; then
-          {
-            echo "### Update Results"
-            echo "- Price data updates: ${{ steps.check-changes.outputs.equipment_changed }} files"
-            echo "- History data updates: ${{ steps.check-changes.outputs.history_changed }} files"
-            echo "- Chart data generation: Completed"
-            echo "- Commit and push: Completed"
-            echo ""
-            echo "Price update and chart generation completed successfully!"
-          } >> $GITHUB_STEP_SUMMARY
+          echo "### Update Results" >> $GITHUB_STEP_SUMMARY
+          echo "- Price data updates: ${{ steps.check-changes.outputs.equipment_changed }} files" >> $GITHUB_STEP_SUMMARY
+          echo "- History data updates: ${{ steps.check-changes.outputs.history_changed }} files" >> $GITHUB_STEP_SUMMARY
+          echo "- Chart data generation: Completed" >> $GITHUB_STEP_SUMMARY
+          echo "- Commit and push: Completed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Price update and chart generation completed successfully!" >> $GITHUB_STEP_SUMMARY
         else
-          {
-            echo "### Execution Results"
-            echo "- No changes detected (no price fluctuations)"
-            echo "- System is operating normally"
-          } >> $GITHUB_STEP_SUMMARY
+          echo "### Execution Results" >> $GITHUB_STEP_SUMMARY
+          echo "- No changes detected (no price fluctuations)" >> $GITHUB_STEP_SUMMARY
+          echo "- System is operating normally" >> $GITHUB_STEP_SUMMARY
         fi
         
-        {
-          echo ""
-          echo "### Generated Files"
-          echo "- data/equipment_prices.json: Latest price data"
-          echo "- data/price_history/history_*.json: Individual item history"
-          echo "- data/price_history/total_price_*.json: Total price history"
-          echo "- data/price_history/*_*.json: Individual chart data"
-        } >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Generated Files" >> $GITHUB_STEP_SUMMARY
+        echo "- data/equipment_prices.json: Latest price data" >> $GITHUB_STEP_SUMMARY
+        echo "- data/price_history/history_*.json: Individual item history" >> $GITHUB_STEP_SUMMARY
+        echo "- data/price_history/total_price_*.json: Total price history" >> $GITHUB_STEP_SUMMARY
+        echo "- data/price_history/*_*.json: Individual chart data" >> $GITHUB_STEP_SUMMARY
 
     - name: Collect diagnostic info on failure
       if: failure()
       run: |
-        {
-          echo "Workflow execution failed"
-          echo ""
-          echo "### Diagnostic Information"
-          echo ""
-          echo "Execution time: $(date '+%Y-%m-%d %H:%M:%S JST')"
-          echo "Python version: $(python --version)"
-          echo "Working directory: $(pwd)"
-          echo "Available space: $(df -h . | tail -1)"
-          echo ""
-        } >> $GITHUB_STEP_SUMMARY
+        echo "Workflow execution failed" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Diagnostic Information" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "Execution time: $(date '+%Y-%m-%d %H:%M:%S JST')" >> $GITHUB_STEP_SUMMARY
+        echo "Python version: $(python --version)" >> $GITHUB_STEP_SUMMARY
+        echo "Working directory: $(pwd)" >> $GITHUB_STEP_SUMMARY
+        echo "Available space: $(df -h . | tail -1)" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
         
         if [ -d "data" ]; then
-          {
-            echo "Data directory structure:"
-            ls -la data/
-          } >> $GITHUB_STEP_SUMMARY
+          echo "Data directory structure:" >> $GITHUB_STEP_SUMMARY
+          ls -la data/ >> $GITHUB_STEP_SUMMARY
         fi
         
         if [ -d "scripts" ]; then
-          {
-            echo "Scripts directory structure:"
-            ls -la scripts/
-          } >> $GITHUB_STEP_SUMMARY
+          echo "Scripts directory structure:" >> $GITHUB_STEP_SUMMARY
+          ls -la scripts/ >> $GITHUB_STEP_SUMMARY
         fi
         
-        {
-          echo ""
-          echo "Solution: Check logs and verify script files are properly placed."
-        } >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "Solution: Check logs and verify script files are properly placed." >> $GITHUB_STEP_SUMMARY
