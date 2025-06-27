@@ -40,7 +40,7 @@ jobs:
         python-version: '3.11'
         cache: 'pip'
     
-    - name: Setup Chrome and ChromeDriver (Version Auto-Detection)
+    - name: Setup Chrome and ChromeDriver (Simplified)
       run: |
         sudo apt-get update
         sudo apt-get install -y wget gnupg curl
@@ -51,142 +51,53 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y google-chrome-stable
         
-        # インストールされたChromeのバージョンを取得
-        CHROME_VERSION=$(google-chrome --version | grep -oP '\d+\.\d+\.\d+\.\d+')
-        echo "Installed Chrome version: $CHROME_VERSION"
+        # Chrome for Testing APIから最新のChromeDriverを取得（簡略化）
+        echo "Getting Chrome version..."
+        CHROME_VERSION=$(google-chrome --version | grep -oP '\d+' | head -1)
+        echo "Chrome major version: $CHROME_VERSION"
         
-        # Chrome major versionを抽出
-        CHROME_MAJOR_VERSION=$(echo $CHROME_VERSION | cut -d '.' -f 1)
-        echo "Chrome major version: $CHROME_MAJOR_VERSION"
+        # 対応するChromeDriverバージョンを試行
+        CHROMEDRIVER_URLS=(
+          "https://storage.googleapis.com/chrome-for-testing-public/${CHROME_VERSION}.0.0.0/linux64/chromedriver-linux64.zip"
+          "https://storage.googleapis.com/chrome-for-testing-public/131.0.6778.204/linux64/chromedriver-linux64.zip"
+          "https://storage.googleapis.com/chrome-for-testing-public/130.0.6723.116/linux64/chromedriver-linux64.zip"
+          "https://storage.googleapis.com/chrome-for-testing-public/129.0.6668.100/linux64/chromedriver-linux64.zip"
+        )
         
-        # Chrome for Testing APIから対応するChromeDriverを取得
-        echo "Fetching compatible ChromeDriver version..."
-        
-        # 複数のアプローチでChromeDriverを取得
-        CHROMEDRIVER_DOWNLOADED=false
-        
-        # アプローチ1: 完全バージョンマッチ
-        CHROMEDRIVER_URL="https://storage.googleapis.com/chrome-for-testing-public/$CHROME_VERSION/linux64/chromedriver-linux64.zip"
-        echo "Trying exact version match: $CHROMEDRIVER_URL"
-        
-        if wget --spider "$CHROMEDRIVER_URL" 2>/dev/null; then
-          echo "Exact version found, downloading..."
-          wget -O /tmp/chromedriver.zip "$CHROMEDRIVER_URL"
-          CHROMEDRIVER_DOWNLOADED=true
-        else
-          echo "Exact version not available, trying alternatives..."
-          
-          # アプローチ2: APIから利用可能なバージョンを取得
-          API_URL="https://googlechromelabs.github.io/chrome-for-testing/known-good-versions-with-downloads.json"
-          echo "Fetching available versions from API..."
-          
-          # 利用可能なバージョンの中から最適なものを選択
-          COMPATIBLE_VERSION=$(curl -s "$API_URL" | \
-            python3 -c "
-import json, sys
-try:
-    data = json.load(sys.stdin)
-    chrome_major = int('$CHROME_MAJOR_VERSION')
-    compatible_versions = []
-    
-    for version_info in data.get('versions', []):
-        version = version_info.get('version', '')
-        if version.startswith(str(chrome_major) + '.'):
-            downloads = version_info.get('downloads', {})
-            chromedriver = downloads.get('chromedriver', [])
-            for download in chromedriver:
-                if download.get('platform') == 'linux64':
-                    compatible_versions.append((version, download.get('url')))
-    
-    if compatible_versions:
-        # 最新の互換バージョンを選択
-        latest_version = sorted(compatible_versions, key=lambda x: [int(v) for v in x[0].split('.')])[-1]
-        print(latest_version[0])
-    else:
-        print('')
-except Exception as e:
-    print('')
-")
-          
-          if [ -n "$COMPATIBLE_VERSION" ]; then
-            CHROMEDRIVER_URL="https://storage.googleapis.com/chrome-for-testing-public/$COMPATIBLE_VERSION/linux64/chromedriver-linux64.zip"
-            echo "Using compatible version: $COMPATIBLE_VERSION"
-            echo "Download URL: $CHROMEDRIVER_URL"
-            
-            if wget -O /tmp/chromedriver.zip "$CHROMEDRIVER_URL"; then
-              CHROMEDRIVER_DOWNLOADED=true
-            fi
+        DOWNLOAD_SUCCESS=false
+        for URL in "${CHROMEDRIVER_URLS[@]}"; do
+          echo "Trying: $URL"
+          if wget --timeout=10 -O /tmp/chromedriver.zip "$URL" 2>/dev/null; then
+            echo "Downloaded successfully: $URL"
+            DOWNLOAD_SUCCESS=true
+            break
+          else
+            echo "Failed: $URL"
           fi
-        fi
+        done
         
-        # アプローチ3: フォールバック - 最新の安定版を試行
-        if [ "$CHROMEDRIVER_DOWNLOADED" = false ]; then
-          echo "API approach failed, trying fallback versions..."
-          
-          FALLBACK_VERSIONS=(
-            "138.0.7204.49"
-            "138.0.7204.0"
-            "137.0.7169.98"
-            "136.0.7103.92"
-          )
-          
-          for VERSION in "${FALLBACK_VERSIONS[@]}"; do
-            CHROMEDRIVER_URL="https://storage.googleapis.com/chrome-for-testing-public/$VERSION/linux64/chromedriver-linux64.zip"
-            echo "Trying fallback version: $VERSION"
-            
-            if wget --timeout=10 -O /tmp/chromedriver.zip "$CHROMEDRIVER_URL" 2>/dev/null; then
-              echo "Successfully downloaded ChromeDriver version: $VERSION"
-              CHROMEDRIVER_DOWNLOADED=true
-              break
-            else
-              echo "Version $VERSION not available"
-            fi
-          done
-        fi
-        
-        # ダウンロード失敗時のエラーハンドリング
-        if [ "$CHROMEDRIVER_DOWNLOADED" = false ]; then
-          echo "ERROR: Failed to download compatible ChromeDriver"
-          echo "Chrome version: $CHROME_VERSION"
-          echo "Available fallback versions failed"
+        if [ "$DOWNLOAD_SUCCESS" = false ]; then
+          echo "All ChromeDriver downloads failed"
           exit 1
         fi
         
         # ChromeDriverの展開とインストール
-        echo "Extracting and installing ChromeDriver..."
         sudo unzip -o /tmp/chromedriver.zip -d /tmp/
         
-        # 展開されたファイルの場所を確認
         if [ -f "/tmp/chromedriver-linux64/chromedriver" ]; then
           sudo mv /tmp/chromedriver-linux64/chromedriver /usr/local/bin/
         elif [ -f "/tmp/chromedriver" ]; then
           sudo mv /tmp/chromedriver /usr/local/bin/
         else
-          echo "ERROR: ChromeDriver binary not found after extraction"
-          ls -la /tmp/
+          echo "ChromeDriver binary not found"
           exit 1
         fi
         
         sudo chmod +x /usr/local/bin/chromedriver
         
-        echo "Installation completed successfully:"
-        echo "Chrome version: $(google-chrome --version)"
-        echo "ChromeDriver version: $(chromedriver --version)"
-        
-        # バージョン互換性の最終確認
-        FINAL_CHROMEDRIVER_VERSION=$(chromedriver --version | grep -oP '\d+\.\d+\.\d+\.\d+')
-        FINAL_CHROME_MAJOR=$(echo $CHROME_VERSION | cut -d '.' -f 1)
-        FINAL_CHROMEDRIVER_MAJOR=$(echo $FINAL_CHROMEDRIVER_VERSION | cut -d '.' -f 1)
-        
-        echo "Final compatibility check:"
-        echo "Chrome major version: $FINAL_CHROME_MAJOR"
-        echo "ChromeDriver major version: $FINAL_CHROMEDRIVER_MAJOR"
-        
-        if [ "$FINAL_CHROME_MAJOR" != "$FINAL_CHROMEDRIVER_MAJOR" ]; then
-          echo "WARNING: Version mismatch detected but proceeding with installation"
-        else
-          echo "✅ Version compatibility confirmed"
-        fi
+        echo "Installation completed:"
+        google-chrome --version
+        chromedriver --version
     
     - name: Install Python dependencies
       run: |
@@ -197,6 +108,19 @@ except Exception as e:
       run: |
         mkdir -p data/price_history
         mkdir -p scripts
+    
+    - name: Environment diagnostic
+      run: |
+        echo "=== Environment Information ==="
+        python --version
+        pip list | grep -E "(selenium|requests|beautifulsoup4|lxml|numpy)"
+        google-chrome --version
+        chromedriver --version
+        ls -la data/ || echo "data directory not found"
+        echo "Available memory:"
+        free -h
+        echo "Available disk space:"
+        df -h
     
     - name: Update equipment prices
       run: |
