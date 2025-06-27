@@ -16,19 +16,18 @@ import functools
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 
-# webdriver-managerのインポートを安全に処理
+# webdriver-managerの安全なインポート
 try:
     from webdriver_manager.chrome import ChromeDriverManager
     WEBDRIVER_MANAGER_AVAILABLE = True
 except ImportError:
     WEBDRIVER_MANAGER_AVAILABLE = False
-    logging.warning("webdriver-manager not available, using fallback method")
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-def retry_on_error(max_retries=5, delay=3):
-    """エラー時に指定回数リトライするデコレータ（強化版）"""
+def retry_on_error(max_retries=3, delay=2):
+    """エラー時に指定回数リトライするデコレータ（元の設定に戻す）"""
     def decorator(func):
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
@@ -40,7 +39,7 @@ def retry_on_error(max_retries=5, delay=3):
                     last_exception = e
                     if attempt < max_retries:
                         logger.warning(f"Retry {attempt}/{max_retries}: {args[1] if len(args) > 1 else 'Unknown'}")
-                        time.sleep(delay * attempt)
+                        time.sleep(delay)
                     else:
                         logger.error(f"Max retries reached: {args[1] if len(args) > 1 else 'Unknown'}")
             raise last_exception
@@ -54,15 +53,15 @@ class GitHubActionsUpdater:
         self.updated_count = 0
         self.lock = threading.Lock()
         
-        # IQR法の設定
+        # IQR法の設定（元の設定）
         self.iqr_multiplier = 1.5
         self.minimum_data_points = 4
         self.minimum_price_threshold = 10000
         
-        # 全件処理か制限処理かを判定
+        # 並行処理設定（元の設定に戻す）
         if self.target_items_input.upper() == 'ALL':
             self.target_items = None
-            self.use_parallel = True
+            self.use_parallel = True  # 並行処理を再有効化
         else:
             try:
                 self.target_items = int(self.target_items_input)
@@ -72,22 +71,24 @@ class GitHubActionsUpdater:
                 self.use_parallel = False
 
     def setup_driver(self):
-        """Seleniumドライバーの設定（GitHub Actions強化版）"""
+        """Seleniumドライバーの設定（高速化版）"""
         chrome_options = Options()
         
-        # GitHub Actions用基本設定
+        # GitHub Actions用基本設定（最適化）
         chrome_options.add_argument("--headless=new")
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-dev-shm-usage")
         chrome_options.add_argument("--disable-gpu")
         chrome_options.add_argument("--window-size=1920,1080")
+        
+        # 高速化設定
         chrome_options.add_argument("--disable-web-security")
-        chrome_options.add_argument("--allow-running-insecure-content")
         chrome_options.add_argument("--disable-features=VizDisplayCompositor")
         chrome_options.add_argument("--disable-ipc-flooding-protection")
         chrome_options.add_argument("--disable-renderer-backgrounding")
         chrome_options.add_argument("--disable-backgrounding-occluded-windows")
-        chrome_options.add_argument("--disable-client-side-phishing-detection")
+        
+        # 並行処理対応設定（元の設定）
         chrome_options.add_argument("--remote-debugging-port=0")
         chrome_options.add_argument("--disable-extensions")
         chrome_options.add_argument("--disable-plugins")
@@ -95,161 +96,89 @@ class GitHubActionsUpdater:
         chrome_options.add_argument("--log-level=3")
         chrome_options.add_argument("--silent")
         
-        # ボット検出回避設定
+        # ボット検出回避設定（元の設定）
         chrome_options.add_argument("--disable-blink-features=AutomationControlled")
         chrome_options.add_experimental_option("excludeSwitches", ["enable-automation", "enable-logging"])
         chrome_options.add_experimental_option('useAutomationExtension', False)
         chrome_options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36')
         
-        # ChromeDriverの初期化（複数の方法を試行）
-        driver = None
-        methods = []
-        
-        # 方法1: WebDriverManagerを使用
-        if WEBDRIVER_MANAGER_AVAILABLE:
-            methods.append(("WebDriverManager", lambda: Service(ChromeDriverManager().install())))
-        
-        # 方法2: システムにインストールされたChromeDriverを使用
-        chromedriver_paths = [
-            '/usr/local/bin/chromedriver',
-            '/usr/bin/chromedriver',
-            'chromedriver'
-        ]
-        
-        for path in chromedriver_paths:
-            methods.append((f"System ChromeDriver ({path})", lambda p=path: Service(p)))
-        
-        # 各方法を順番に試行
-        for method_name, service_func in methods:
-            try:
-                logger.info(f"Trying {method_name}...")
-                service = service_func()
-                service.log_path = os.devnull
-                driver = webdriver.Chrome(service=service, options=chrome_options)
-                
-                # 追加のJavaScript設定
-                driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-                driver.execute_script("Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en']})")
-                driver.execute_script("Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]})")
-                
-                logger.info(f"✅ ChromeDriver initialized successfully with {method_name}")
-                return driver
-                
-            except Exception as e:
-                logger.warning(f"❌ {method_name} failed: {e}")
-                if driver:
-                    try:
-                        driver.quit()
-                    except:
-                        pass
-                driver = None
-                continue
-        
-        # 全ての方法が失敗した場合
-        raise Exception("All ChromeDriver initialization methods failed")
+        # シンプルなChromeDriver初期化（高速化）
+        try:
+            if WEBDRIVER_MANAGER_AVAILABLE:
+                service = Service(ChromeDriverManager().install())
+            else:
+                service = Service('/usr/local/bin/chromedriver')
+            
+            service.log_path = os.devnull
+            driver = webdriver.Chrome(service=service, options=chrome_options)
+            
+            # 最小限のJavaScript設定
+            driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+            
+            logger.info("ChromeDriver initialized successfully")
+            return driver
+            
+        except Exception as e:
+            logger.error(f"ChromeDriver initialization failed: {e}")
+            raise
 
     def search_equipment_js(self, driver, equipment_name):
-        """JavaScriptを使用した検索実行（改善版）"""
-        max_attempts = 3
-        
-        for attempt in range(max_attempts):
-            try:
-                logger.info(f"検索試行 {attempt + 1}/{max_attempts}: {equipment_name}")
-                
-                driver.get("https://msu.io/navigator")
-                
-                # ページ読み込み完了を確実に待機
-                WebDriverWait(driver, 30).until(
-                    lambda d: d.execute_script("return document.readyState") == "complete"
-                )
-                
-                time.sleep(5)
-                
-                # JavaScriptによる検索実行
-                search_success = driver.execute_script("""
-                    let searchField = null;
-                    const selectors = [
-                        '#form_search_input',
-                        'input[id="form_search_input"]',
-                        'input[type="text"]',
-                        'input[placeholder*="search"]',
-                        'input[placeholder*="Search"]'
-                    ];
-                    
-                    for (let i = 0; i < 10; i++) {
-                        for (const selector of selectors) {
-                            searchField = document.querySelector(selector);
-                            if (searchField && searchField.offsetParent !== null) break;
-                        }
-                        if (searchField && searchField.offsetParent !== null) break;
-                        await new Promise(resolve => setTimeout(resolve, 500));
-                    }
-                    
-                    if (!searchField || searchField.offsetParent === null) return false;
-                    
-                    searchField.value = '';
-                    searchField.focus();
-                    searchField.value = arguments[0];
-                    
-                    ['input', 'change', 'keyup'].forEach(eventType => {
-                        searchField.dispatchEvent(new Event(eventType, { bubbles: true }));
-                    });
-                    
-                    const enterEvent = new KeyboardEvent('keydown', {
-                        key: 'Enter',
-                        keyCode: 13,
-                        bubbles: true
-                    });
-                    searchField.dispatchEvent(enterEvent);
-                    return true;
-                """, equipment_name)
+        """JavaScriptを使用した検索実行（元の設定に戻す）"""
+        try:
+            driver.get("https://msu.io/navigator")
+            WebDriverWait(driver, 15).until(
+                lambda d: d.execute_script("return document.readyState") == "complete"
+            )
+            time.sleep(3)  # 元の待機時間
 
-                if not search_success:
-                    if attempt < max_attempts - 1:
-                        logger.warning(f"検索フィールドが見つかりません。再試行します...")
-                        time.sleep(3)
-                        continue
-                    else:
-                        raise Exception("Search field not found after all attempts")
+            search_success = driver.execute_script("""
+                let searchField = null;
+                const selectors = [
+                    '#form_search_input',
+                    'input[id="form_search_input"]',
+                    'input[type="text"]',
+                    'input[placeholder*="search"]',
+                    'input[placeholder*="Search"]'
+                ];
+                for (const selector of selectors) {
+                    searchField = document.querySelector(selector);
+                    if (searchField) break;
+                }
+                if (!searchField) return false;
+                
+                searchField.value = '';
+                searchField.focus();
+                searchField.value = arguments[0];
+                searchField.dispatchEvent(new Event('input', { bubbles: true }));
+                searchField.dispatchEvent(new Event('change', { bubbles: true }));
+                
+                const enterEvent = new KeyboardEvent('keydown', {
+                    key: 'Enter',
+                    keyCode: 13,
+                    bubbles: true
+                });
+                searchField.dispatchEvent(enterEvent);
+                return true;
+            """, equipment_name)
 
-                time.sleep(5)
-                return True
+            if not search_success:
+                raise Exception("Search field not found")
 
-            except Exception as e:
-                if attempt < max_attempts - 1:
-                    logger.warning(f"検索試行 {attempt + 1} 失敗: {e}. 再試行します...")
-                    time.sleep(5)
-                else:
-                    raise Exception(f"検索エラー: {equipment_name}, {e}")
-        
-        return False
+            time.sleep(2)  # 元の待機時間
+            return True
+
+        except Exception as e:
+            raise Exception(f"検索エラー: {equipment_name}, {e}")
 
     def extract_prices(self, driver):
-        """価格情報を抽出（改善版）"""
+        """価格情報を抽出（元の処理ロジック）"""
         try:
-            # 複数のセレクターを試行
-            price_selectors = [
-                "p._typography-point-body-m-medium_15szf_134._kartrider_3m7yu_9.NesoBox_text__lvOcl",
-                "p[class*='NesoBox_text']",
-                "p[class*='_typography-point-body-m-medium']",
-                "p[class*='_kartrider_']",
-                ".NesoBox_text__lvOcl"
-            ]
-            
-            price_elements = []
-            for selector in price_selectors:
-                try:
-                    elements = driver.find_elements(By.CSS_SELECTOR, selector)
-                    if elements:
-                        price_elements = elements
-                        logger.info(f"価格要素を発見: {selector} ({len(elements)}件)")
-                        break
-                except Exception as e:
-                    logger.warning(f"セレクター {selector} でエラー: {e}")
-                    continue
+            price_elements = driver.find_elements(
+                By.CSS_SELECTOR,
+                "p._typography-point-body-m-medium_15szf_134._kartrider_3m7yu_9.NesoBox_text__lvOcl"
+            )
 
             if not price_elements:
-                logger.warning("価格要素が見つかりません")
                 return []
 
             all_prices = []
@@ -261,44 +190,38 @@ class GitHubActionsUpdater:
                     ).strip()
 
                     if price_text:
-                        price_patterns = [
-                            r'(\d{1,3}(?:,\d{3})*)',
-                            r'(\d+)',
-                        ]
-                        
-                        for pattern in price_patterns:
-                            price_match = re.search(pattern, price_text)
-                            if price_match:
-                                price_str = price_match.group(1).replace(',', '')
-                                if price_str.isdigit():
-                                    price = int(price_str)
-                                    all_prices.append(price)
-                                    break
-                except Exception as e:
-                    logger.warning(f"価格解析エラー: {e}")
+                        price_match = re.search(r'[\d,]+', price_text)
+                        if price_match:
+                            price_str = price_match.group().replace(',', '')
+                            if price_str.isdigit():
+                                price = int(price_str)
+                                all_prices.append(price)
+                except Exception:
                     continue
 
-            # フィルタリング処理
+            # フィルタリング処理（元のロジック）
             filtered_prices = [price for price in all_prices if price > self.minimum_price_threshold]
-            excluded_count = len(all_prices) - len(filtered_prices)
             
+            excluded_count = len(all_prices) - len(filtered_prices)
             if excluded_count > 0:
                 excluded_prices = [price for price in all_prices if price <= self.minimum_price_threshold]
-                logger.info(f"{self.minimum_price_threshold:,}以下の価格を{excluded_count}件除外")
+                logger.info(f"{self.minimum_price_threshold:,}以下の価格を{excluded_count}件除外: {[f'{p:,}' for p in excluded_prices]}")
             
             filtered_prices.sort()
             final_prices = filtered_prices[:5]
             
             logger.info(f"フィルタリング後の価格（5件まで）: {[f'{p:,}' for p in final_prices]}")
             
+            if len(final_prices) < 5:
+                logger.warning(f"取得できた価格が{len(final_prices)}件のみです（目標5件）")
+                
             return final_prices
 
         except Exception as e:
-            logger.error(f"価格抽出エラー: {e}")
-            return []
+            raise Exception(f"価格抽出エラー: {e}")
 
     def parse_previous_price(self, price_str):
-        """前回価格を数値に変換"""
+        """前回価格を数値に変換（元のロジック）"""
         if not price_str or price_str in ['未取得', 'undefined', '']:
             return None
         
@@ -309,7 +232,7 @@ class GitHubActionsUpdater:
             return None
 
     def detect_outliers_iqr(self, prices):
-        """IQR法による外れ値検出"""
+        """IQR法による外れ値検出（元のロジック）"""
         if len(prices) < self.minimum_data_points:
             logger.info(f"データ数不足（{len(prices)}件）: IQR法をスキップ")
             return [], prices
@@ -342,11 +265,11 @@ class GitHubActionsUpdater:
         return outliers, normal_prices
 
     def select_optimal_price(self, prices, previous_price):
-        """最適価格の選定"""
+        """最適価格の選定（元のロジック）"""
         if not prices:
             return None, "価格データなし"
 
-        logger.info(f"価格データ（5件まで）: {[f'{p:,}' for p in prices]}")
+        logger.info(f"事前フィルタリング済み価格（5件まで）: {[f'{p:,}' for p in prices]}")
         
         if previous_price:
             logger.info(f"前回価格: {previous_price:,}")
@@ -383,9 +306,9 @@ class GitHubActionsUpdater:
         
         return optimal_price, "二段階フィルタリング正常価格"
 
-    @retry_on_error(max_retries=5, delay=3)
+    @retry_on_error(max_retries=3, delay=2)  # 元の設定に戻す
     def update_equipment_price_with_retry(self, equipment_id, equipment_name, current_equipment_data):
-        """装備価格の更新"""
+        """装備価格の更新（元の設定）"""
         driver = None
         try:
             previous_price = self.parse_previous_price(
@@ -430,10 +353,9 @@ class GitHubActionsUpdater:
                     driver.quit()
                 except:
                     pass
-            time.sleep(2)
 
     def process_equipment_batch(self, equipment_items):
-        """装備アイテムのバッチ処理"""
+        """装備アイテムのバッチ処理（元のロジック）"""
         results = []
         for equipment_id, equipment_info in equipment_items:
             equipment_name = equipment_info.get("item_name", "")
@@ -461,14 +383,14 @@ class GitHubActionsUpdater:
                 })
                 logger.error(f"❌ {equipment_name}: エラー")
 
-            time.sleep(3)
+            time.sleep(3)  # 元の待機時間
 
         return results
 
     def run_update(self):
-        """価格更新実行"""
+        """価格更新実行（並行処理復活版）"""
         if self.target_items is None:
-            logger.info("GitHub Actions price update started - Target: ALL items")
+            logger.info("GitHub Actions price update started - Target: ALL items (parallel processing)")
         else:
             logger.info(f"GitHub Actions price update started - Target: {self.target_items} items")
         
@@ -493,20 +415,49 @@ class GitHubActionsUpdater:
         total = len(items)
         logger.info(f"Processing {total} items")
 
-        # シングルスレッド処理（安定性重視）
-        all_results = []
-        for i, (equipment_id, equipment_info) in enumerate(items, 1):
-            equipment_name = equipment_info.get("item_name", "")
-            logger.info(f"[{i}/{total}] Processing: {equipment_name}")
-            
-            result = self.update_equipment_price_with_retry(
-                equipment_id, equipment_name, equipment_info
-            )
-            all_results.append(result)
-            
-            time.sleep(5)
+        # 並行処理の復活（元の設定）
+        if self.use_parallel and total > 10:
+            chunk = total // 4
+            batches = [
+                items[0:chunk],
+                items[chunk:chunk*2], 
+                items[chunk*2:chunk*3],
+                items[chunk*3:]
+            ]
 
-        # JSONデータに反映
+            logger.info(f"並行処理開始: 4ワーカー, 合計 {total}件")
+
+            all_results = []
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                futures = {
+                    executor.submit(self.process_equipment_batch, batch): idx
+                    for idx, batch in enumerate(batches, start=1)
+                }
+
+                for future in as_completed(futures):
+                    batch_no = futures[future]
+                    try:
+                        results = future.result()
+                        all_results.extend(results)
+                        logger.info(f"✅ バッチ{batch_no} 完了")
+                    except Exception as e:
+                        logger.error(f"❌ バッチ{batch_no} エラー: {e}")
+
+        else:
+            # シングルスレッド処理
+            all_results = []
+            for i, (equipment_id, equipment_info) in enumerate(items, 1):
+                equipment_name = equipment_info.get("item_name", "")
+                logger.info(f"[{i}/{total}] Processing: {equipment_name}")
+                
+                result = self.update_equipment_price_with_retry(
+                    equipment_id, equipment_name, equipment_info
+                )
+                all_results.append(result)
+                
+                time.sleep(5)  # GitHub Actions制限対応
+
+        # JSONデータに反映（元のロジック）
         normal_updates = 0
         outlier_updates = 0
         failed_updates = 0
@@ -538,7 +489,7 @@ class GitHubActionsUpdater:
             sys.exit(1)
 
         logger.info("=" * 50)
-        logger.info("📊 価格更新統計:")
+        logger.info("📊 二段階フィルタリング価格更新統計:")
         logger.info(f"  正常更新: {normal_updates}件")
         logger.info(f"  外れ値処理: {outlier_updates}件")
         logger.info(f"  更新失敗: {failed_updates}件")
