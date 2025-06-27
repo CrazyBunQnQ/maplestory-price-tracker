@@ -222,66 +222,66 @@ Architecture:
       run: |
         echo "## MapleStory Equipment Price Auto Update Results" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### 基本情報" >> $GITHUB_STEP_SUMMARY
+        echo "### Basic Information" >> $GITHUB_STEP_SUMMARY
         echo "| Item | Result |" >> $GITHUB_STEP_SUMMARY
         echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
-        echo "| 実行時刻 | $(date '+%Y-%m-%d %H:%M:%S JST') |" >> $GITHUB_STEP_SUMMARY
-        echo "| データ変更 | ${{ steps.check-changes.outputs.changed }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| 対象アイテム | ${{ env.TARGET_ITEMS }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| ワークフロー実行ID | ${{ github.run_id }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Execution Time | $(date '+%Y-%m-%d %H:%M:%S JST') |" >> $GITHUB_STEP_SUMMARY
+        echo "| Data Changed | ${{ steps.check-changes.outputs.changed }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Target Items | ${{ github.event.inputs.target_items || 'ALL' }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Workflow Run ID | ${{ github.run_id }} |" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         
-        echo "### スクリプト構成" >> $GITHUB_STEP_SUMMARY
-        echo "| スクリプト | 用途 | 状態 |" >> $GITHUB_STEP_SUMMARY
-        echo "|-----------|------|------|" >> $GITHUB_STEP_SUMMARY
-        echo "| update_prices.py | メイン価格更新 | 実行済み |" >> $GITHUB_STEP_SUMMARY
-        echo "| historical_price_tracker.py | 個別アイテム価格履歴 | 実行済み |" >> $GITHUB_STEP_SUMMARY
-        echo "| total_price_aggregator.py | 総価格集計 | 実行済み |" >> $GITHUB_STEP_SUMMARY
+        echo "### Script Configuration" >> $GITHUB_STEP_SUMMARY
+        echo "| Script | Purpose | Status |" >> $GITHUB_STEP_SUMMARY
+        echo "|--------|---------|--------|" >> $GITHUB_STEP_SUMMARY
+        echo "| update_prices.py | Main price update | Executed |" >> $GITHUB_STEP_SUMMARY
+        echo "| historical_price_tracker.py | Individual item price history | Executed |" >> $GITHUB_STEP_SUMMARY
+        echo "| total_price_aggregator.py | Total price aggregation | Executed |" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         
         if [ "${{ steps.check-changes.outputs.changed }}" == "true" ]; then
-          echo "### 更新結果" >> $GITHUB_STEP_SUMMARY
-          echo "- 価格データ更新: ${{ steps.check-changes.outputs.equipment_changed }}ファイル" >> $GITHUB_STEP_SUMMARY
-          echo "- 履歴データ更新: ${{ steps.check-changes.outputs.history_changed }}ファイル" >> $GITHUB_STEP_SUMMARY
-          echo "- チャートデータ生成: 完了" >> $GITHUB_STEP_SUMMARY
-          echo "- コミット・プッシュ: 完了" >> $GITHUB_STEP_SUMMARY
+          echo "### Update Results" >> $GITHUB_STEP_SUMMARY
+          echo "- Price data updates: ${{ steps.check-changes.outputs.equipment_changed }} files" >> $GITHUB_STEP_SUMMARY
+          echo "- History data updates: ${{ steps.check-changes.outputs.history_changed }} files" >> $GITHUB_STEP_SUMMARY
+          echo "- Chart data generation: Completed" >> $GITHUB_STEP_SUMMARY
+          echo "- Commit and push: Completed" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "価格更新とチャート生成が正常に完了しました！" >> $GITHUB_STEP_SUMMARY
+          echo "Price update and chart generation completed successfully!" >> $GITHUB_STEP_SUMMARY
         else
-          echo "### 実行結果" >> $GITHUB_STEP_SUMMARY
-          echo "- 変更なし（価格に変動がありませんでした）" >> $GITHUB_STEP_SUMMARY
-          echo "- システムは正常に動作しています" >> $GITHUB_STEP_SUMMARY
+          echo "### Execution Results" >> $GITHUB_STEP_SUMMARY
+          echo "- No changes detected (no price fluctuations)" >> $GITHUB_STEP_SUMMARY
+          echo "- System is operating normally" >> $GITHUB_STEP_SUMMARY
         fi
         
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### 生成ファイル" >> $GITHUB_STEP_SUMMARY
-        echo "- data/equipment_prices.json: 最新価格データ" >> $GITHUB_STEP_SUMMARY
-        echo "- data/price_history/history_*.json: 個別アイテム履歴" >> $GITHUB_STEP_SUMMARY
-        echo "- data/price_history/total_price_*.json: 総価格履歴" >> $GITHUB_STEP_SUMMARY
-        echo "- data/price_history/*_*.json: 個別チャートデータ" >> $GITHUB_STEP_SUMMARY
+        echo "### Generated Files" >> $GITHUB_STEP_SUMMARY
+        echo "- data/equipment_prices.json: Latest price data" >> $GITHUB_STEP_SUMMARY
+        echo "- data/price_history/history_*.json: Individual item history" >> $GITHUB_STEP_SUMMARY
+        echo "- data/price_history/total_price_*.json: Total price history" >> $GITHUB_STEP_SUMMARY
+        echo "- data/price_history/*_*.json: Individual chart data" >> $GITHUB_STEP_SUMMARY
 
     - name: Collect diagnostic info on failure
       if: failure()
       run: |
-        echo "ワークフロー実行中にエラーが発生しました" >> $GITHUB_STEP_SUMMARY
+        echo "Workflow execution failed" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### 診断情報" >> $GITHUB_STEP_SUMMARY
-        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-        echo "実行時刻: $(date '+%Y-%m-%d %H:%M:%S JST')" >> $GITHUB_STEP_SUMMARY
-        echo "Python版本: $(python --version)" >> $GITHUB_STEP_SUMMARY
-        echo "作業ディレクトリ: $(pwd)" >> $GITHUB_STEP_SUMMARY
-        echo "利用可能スペース: $(df -h . | tail -1)" >> $GITHUB_STEP_SUMMARY
+        echo "### Diagnostic Information" >> $GITHUB_STEP_SUMMARY
+        echo '```
+        echo "Execution time: $(date '+%Y-%m-%d %H:%M:%S JST')" >> $GITHUB_STEP_SUMMARY
+        echo "Python version: $(python --version)" >> $GITHUB_STEP_SUMMARY
+        echo "Working directory: $(pwd)" >> $GITHUB_STEP_SUMMARY
+        echo "Available space: $(df -h . | tail -1)" >> $GITHUB_STEP_SUMMARY
         
         if [ -d "data" ]; then
-          echo "dataディレクトリ構造:" >> $GITHUB_STEP_SUMMARY
+          echo "data directory structure:" >> $GITHUB_STEP_SUMMARY
           ls -la data/ >> $GITHUB_STEP_SUMMARY
         fi
         
         if [ -d "scripts" ]; then
-          echo "scriptsディレクトリ構造:" >> $GITHUB_STEP_SUMMARY
+          echo "scripts directory structure:" >> $GITHUB_STEP_SUMMARY
           ls -la scripts/ >> $GITHUB_STEP_SUMMARY
         fi
         
-        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "解決方法: ログを確認し、スクリプトファイルが正しく配置されているか確認してください。" >> $GITHUB_STEP_SUMMARY
+        echo "Solution: Check logs and verify script files are properly placed." >> $GITHUB_STEP_SUMMARY
