@@ -266,22 +266,22 @@ Architecture:
         echo "Workflow execution failed" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### Diagnostic Information" >> $GITHUB_STEP_SUMMARY
-        echo '```
+        echo "" >> $GITHUB_STEP_SUMMARY
         echo "Execution time: $(date '+%Y-%m-%d %H:%M:%S JST')" >> $GITHUB_STEP_SUMMARY
         echo "Python version: $(python --version)" >> $GITHUB_STEP_SUMMARY
         echo "Working directory: $(pwd)" >> $GITHUB_STEP_SUMMARY
         echo "Available space: $(df -h . | tail -1)" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
         
         if [ -d "data" ]; then
-          echo "data directory structure:" >> $GITHUB_STEP_SUMMARY
+          echo "Data directory structure:" >> $GITHUB_STEP_SUMMARY
           ls -la data/ >> $GITHUB_STEP_SUMMARY
         fi
         
         if [ -d "scripts" ]; then
-          echo "scripts directory structure:" >> $GITHUB_STEP_SUMMARY
+          echo "Scripts directory structure:" >> $GITHUB_STEP_SUMMARY
           ls -la scripts/ >> $GITHUB_STEP_SUMMARY
         fi
         
-        echo '```' >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "Solution: Check logs and verify script files are properly placed." >> $GITHUB_STEP_SUMMARY
