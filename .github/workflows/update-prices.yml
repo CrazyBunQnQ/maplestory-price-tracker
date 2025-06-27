@@ -215,16 +215,16 @@ jobs:
         git commit -m "Auto-update: Equipment prices & historical data (分離スクリプト対応)
 
 📊 Update Summary:
-- Update time: ${CURRENT_TIME}
-- Total items: ${TOTAL_ITEMS}
-- Updated items: ${UPDATED_COUNT}
-- Individual charts: ${INDIVIDUAL_CHARTS}
-- Total price charts: ${TOTAL_CHARTS}
-
-🔧 Architecture:
-- Individual item history: scripts/historical_price_tracker.py
-- Total price aggregation: scripts/total_price_aggregator.py
-- Automated by GitHub Actions (分離スクリプト版)"
+        - Update time: ${CURRENT_TIME}
+        - Total items: ${TOTAL_ITEMS}
+        - Updated items: ${UPDATED_COUNT}
+        - Individual charts: ${INDIVIDUAL_CHARTS}
+        - Total price charts: ${TOTAL_CHARTS}
+        
+        🔧 Architecture:
+        - Individual item history: scripts/historical_price_tracker.py
+        - Total price aggregation: scripts/total_price_aggregator.py
+        - Automated by GitHub Actions (分離スクリプト版)"
         
         git push origin ${{ github.ref_name }}
         
@@ -279,7 +279,7 @@ jobs:
         echo "🚨 ワークフロー実行中にエラーが発生しました" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### 📋 診断情報" >> $GITHUB_STEP_SUMMARY
-        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY  # ← ここが問題！
+        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
         echo "実行時刻: $(date '+%Y-%m-%d %H:%M:%S JST')" >> $GITHUB_STEP_SUMMARY
         echo "Python版本: $(python --version)" >> $GITHUB_STEP_SUMMARY
         echo "作業ディレクトリ: $(pwd)" >> $GITHUB_STEP_SUMMARY
@@ -295,6 +295,6 @@ jobs:
           ls -la scripts/ >> $GITHUB_STEP_SUMMARY
         fi
         
-        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY  # ← ここも問題！
+        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "❗ **解決方法**: ログを確認し、スクリプトファイルが正しく配置されているか確認してください。" >> $GITHUB_STEP_SUMMARY
