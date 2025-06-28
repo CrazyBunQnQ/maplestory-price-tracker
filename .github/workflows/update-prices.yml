@@ -41,7 +41,6 @@ jobs:
     
     - name: Complete system cleanup for parallel processing
       run: |
-        # 並行処理対応の完全クリーンアップ
         sudo pkill -f chrome || true
         sudo pkill -f chromedriver || true
         sudo apt-get remove -y google-chrome-stable chromium-browser || true
@@ -67,16 +66,13 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y google-chrome-stable
         
-        # Wait for Chrome installation to complete
         sleep 3
         
-        # Get Chrome version and verify installation
         CHROME_VERSION=$(google-chrome --version | grep -oP '\d+\.\d+\.\d+\.\d+')
         CHROME_MAJOR=$(echo $CHROME_VERSION | cut -d '.' -f 1)
         
         echo "Chrome installed: $CHROME_VERSION (major: $CHROME_MAJOR)"
         
-        # Download compatible ChromeDriver with retries
         CHROMEDRIVER_DOWNLOADED=false
         RETRY_COUNT=0
         MAX_RETRIES=3
@@ -85,7 +81,6 @@ jobs:
           RETRY_COUNT=$((RETRY_COUNT + 1))
           echo "ChromeDriver download attempt $RETRY_COUNT/$MAX_RETRIES"
           
-          # Try multiple versions with exact Chrome version first
           VERSIONS=(
             "${CHROME_VERSION}"
             "${CHROME_MAJOR}.0.0.0"
@@ -120,7 +115,6 @@ jobs:
           exit 1
         fi
         
-        # Extract and install with verification
         sudo unzip -o /tmp/chromedriver.zip -d /tmp/
         
         if [ -f "/tmp/chromedriver-linux64/chromedriver" ]; then
@@ -132,23 +126,18 @@ jobs:
           exit 1
         fi
         
-        # Set permissions and create symlink for parallel processing
         sudo chmod +x /usr/local/bin/chromedriver
         sudo ln -sf /usr/local/bin/chromedriver /usr/bin/chromedriver
         
-        # Verification and compatibility check
         echo "=== Installation Verification ==="
         google-chrome --version
         chromedriver --version
         
-        # Test ChromeDriver initialization
-        echo "=== Testing ChromeDriver Initialization ==="
         timeout 10 chromedriver --version || {
           echo "ERROR: ChromeDriver test failed"
           exit 1
         }
         
-        # Final compatibility check
         FINAL_CHROME_MAJOR=$(google-chrome --version | grep -oP '\d+' | head -1)
         FINAL_CHROMEDRIVER_MAJOR=$(chromedriver --version | grep -oP '\d+' | head -1)
         
@@ -163,8 +152,6 @@ jobs:
           echo "Proceeding with available versions..."
         fi
         
-        # Pre-warm ChromeDriver for parallel processing
-        echo "=== Pre-warming ChromeDriver for parallel processing ==="
         for i in {1..3}; do
           timeout 5 chromedriver --version > /dev/null 2>&1 || true
           sleep 1
@@ -219,28 +206,62 @@ jobs:
         echo "Starting parallel price update at $(date '+%Y-%m-%d %H:%M:%S JST')"
         python scripts/update_prices.py
         echo "Parallel price update completed at $(date '+%Y-%m-%d %H:%M:%S JST')"
+        
+        # 価格更新完了後の同期待機とファイル検証
+        echo "Waiting for data synchronization..."
+        sleep 5
+        
+        # JSONファイルの整合性確認
+        if [ -f "data/equipment_prices.json" ]; then
+          echo "Price data file verified: $(stat -c%s data/equipment_prices.json) bytes"
+          echo "Last modified: $(stat -c%y data/equipment_prices.json)"
+        else
+          echo "ERROR: Price data file not found"
+          exit 1
+        fi
       env:
         TARGET_ITEMS: ${{ github.event.inputs.target_items || 'ALL' }}
         PYTHONPATH: ${{ github.workspace }}
         PYTHONUNBUFFERED: 1
-        # 並行処理用環境変数
         PARALLEL_WORKERS: 6
         CHROME_BINARY_PATH: /opt/google/chrome/chrome
         CHROMEDRIVER_PATH: /usr/local/bin/chromedriver
     
-    - name: Update price history
+    - name: Update price history with force detection
       run: |
-        echo "Starting price history update"
-        python scripts/historical_price_tracker.py || echo "Historical tracker failed"
+        echo "Starting price history update with force detection"
+        
+        # 強制価格変更検出フラグ
+        export FORCE_PRICE_DETECTION=true
+        export PRICE_UPDATE_COMPLETED=$(date '+%Y-%m-%d %H:%M:%S')
+        
+        python scripts/historical_price_tracker.py || {
+          echo "Historical price tracker failed, attempting recovery..."
+          sleep 3
+          export FORCE_REBUILD_HISTORY=true
+          python scripts/historical_price_tracker.py || echo "Historical price tracker failed after retry"
+        }
       env:
         PYTHONPATH: ${{ github.workspace }}
+        FORCE_PRICE_DETECTION: true
     
-    - name: Aggregate total price data
+    - name: Aggregate total price data with force refresh
       run: |
-        echo "Starting total price aggregation"
-        python scripts/total_price_aggregator.py || echo "Aggregator failed"
+        echo "Starting total price aggregation with force refresh"
+        
+        # 強制データリフレッシュフラグ
+        export FORCE_DATA_REFRESH=true
+        export HISTORY_UPDATE_COMPLETED=$(date '+%Y-%m-%d %H:%M:%S')
+        
+        python scripts/total_price_aggregator.py || {
+          echo "Total price aggregator failed, attempting recovery..."
+          sleep 3
+          export FORCE_REBUILD_AGGREGATION=true
+          python scripts/total_price_aggregator.py || echo "Total price aggregator failed after retry"
+        }
       env:
         PYTHONPATH: ${{ github.workspace }}
+        FORCE_DATA_REFRESH: true
     
     - name: Check for changes
       id: check-changes
@@ -250,6 +271,9 @@ jobs:
           echo "Data changes detected"
           CHANGED_FILES=$(git status --porcelain data/ | wc -l)
           echo "changed_files=${CHANGED_FILES}" >> $GITHUB_OUTPUT
+          
+          echo "Changed files details:"
+          git status --short data/
         else
           echo "changed=false" >> $GITHUB_OUTPUT
           echo "No changes detected"
@@ -263,17 +287,17 @@ jobs:
         git fetch origin
         
         CURRENT_TIME=$(date '+%Y-%m-%d %H:%M:%S JST')
-        COMMIT_MESSAGE="Auto-update: Equipment prices (Parallel processing v138 compatibility)
+        COMMIT_MESSAGE="Auto-update: Equipment prices (Force detection fix)
 
         - Update time: ${CURRENT_TIME}
         - Changed files: ${{ steps.check-changes.outputs.changed_files }}
         - Processing: Parallel (6 workers)
+        - Price detection: Force enabled
         - Chrome/ChromeDriver: v138 compatible
         - Automated by GitHub Actions"
         
         git commit -m "$COMMIT_MESSAGE" || echo "No changes to commit"
         
-        # Multiple push strategies
         if git push origin ${{ github.ref_name }}; then
           echo "Push successful"
         elif git merge origin/${{ github.ref_name }} --no-edit && git push origin ${{ github.ref_name }}; then
@@ -289,35 +313,35 @@ jobs:
       run: |
         echo "## MapleStory Equipment Price Auto Update Results" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### Parallel Processing (6 Workers)" >> $GITHUB_STEP_SUMMARY
+        echo "### Force Price Detection Applied" >> $GITHUB_STEP_SUMMARY
         echo "| Item | Result |" >> $GITHUB_STEP_SUMMARY
         echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
         echo "| Execution Time | $(date '+%Y-%m-%d %H:%M:%S JST') |" >> $GITHUB_STEP_SUMMARY
         echo "| Chrome Version | $(google-chrome --version 2>/dev/null) |" >> $GITHUB_STEP_SUMMARY
         echo "| ChromeDriver Version | $(chromedriver --version 2>/dev/null) |" >> $GITHUB_STEP_SUMMARY
         echo "| Processing Mode | Parallel (6 workers) |" >> $GITHUB_STEP_SUMMARY
+        echo "| Price Detection | Force enabled |" >> $GITHUB_STEP_SUMMARY
         echo "| Data Changed | ${{ steps.check-changes.outputs.changed }} |" >> $GITHUB_STEP_SUMMARY
         echo "| Changed Files | ${{ steps.check-changes.outputs.changed_files }} |" >> $GITHUB_STEP_SUMMARY
         echo "| Target Items | ${{ env.TARGET_ITEMS }} |" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         
         if [ "${{ steps.check-changes.outputs.changed }}" == "true" ]; then
-          echo "**✅ Parallel processing completed successfully!**" >> $GITHUB_STEP_SUMMARY
+          echo "**✅ Price update with force detection completed successfully!**" >> $GITHUB_STEP_SUMMARY
         else
-          echo "**ℹ️ No changes detected**" >> $GITHUB_STEP_SUMMARY
+          echo "**ℹ️ No changes detected - check force detection logic**" >> $GITHUB_STEP_SUMMARY
         fi
 
     - name: Diagnostic info on failure
       if: failure()
       run: |
-        echo "## Parallel Processing Failed" >> $GITHUB_STEP_SUMMARY
+        echo "## Force Detection Failed" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### Diagnostic Information" >> $GITHUB_STEP_SUMMARY
         echo "- Execution time: $(date '+%Y-%m-%d %H:%M:%S JST')" >> $GITHUB_STEP_SUMMARY
         echo "- Chrome: $(google-chrome --version 2>/dev/null || echo 'Not found')" >> $GITHUB_STEP_SUMMARY
         echo "- ChromeDriver: $(chromedriver --version 2>/dev/null || echo 'Not found')" >> $GITHUB_STEP_SUMMARY
-        echo "- ChromeDriver path: $(which chromedriver 2>/dev/null || echo 'Not found')" >> $GITHUB_STEP_SUMMARY
-        echo "- Available memory: $(free -h | grep Mem | awk '{print $7}' || echo 'Unknown')" >> $GITHUB_STEP_SUMMARY
-        echo "- Running processes: $(ps aux | grep -E '(chrome|chromedriver)' | wc -l)" >> $GITHUB_STEP_SUMMARY
+        echo "- Data files: $(ls -la data/ 2>/dev/null || echo 'Not found')" >> $GITHUB_STEP_SUMMARY
+        echo "- Git status: $(git status --short data/ 2>/dev/null || echo 'Not available')" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "**Solution**: Parallel processing ChromeDriver compatibility issue detected." >> $GITHUB_STEP_SUMMARY
+        echo "**Solution**: Force price detection and data synchronization applied." >> $GITHUB_STEP_SUMMARY
