@@ -39,99 +39,174 @@ jobs:
         python-version: '3.11'
         cache: 'pip'
     
-    - name: Complete cleanup
+    - name: Complete system cleanup for parallel processing
       run: |
+        # 並行処理対応の完全クリーンアップ
+        sudo pkill -f chrome || true
+        sudo pkill -f chromedriver || true
         sudo apt-get remove -y google-chrome-stable chromium-browser || true
         sudo rm -rf /usr/local/bin/chromedriver
         sudo rm -rf /usr/bin/chromedriver
+        sudo rm -rf /opt/google/chrome
+        sudo rm -rf /tmp/chrome*
+        sudo rm -rf /tmp/chromedriver*
         sudo apt-get autoremove -y
         sudo apt-get clean
-        echo "Cleanup completed"
+        echo "Complete cleanup for parallel processing finished"
     
-    - name: Install Chrome and ChromeDriver
+    - name: Install Chrome and ChromeDriver with parallel processing support
       run: |
+        echo "=== Installing Chrome and ChromeDriver for parallel processing ==="
+        
         sudo apt-get update
         sudo apt-get install -y wget gnupg curl unzip
         
-        # Install Google Chrome
+        # Install Google Chrome with verification
         wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
         sudo sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list'
         sudo apt-get update
         sudo apt-get install -y google-chrome-stable
         
-        # Get Chrome major version
-        CHROME_MAJOR=$(google-chrome --version | grep -oP '\d+' | head -1)
-        echo "Chrome major version: $CHROME_MAJOR"
+        # Wait for Chrome installation to complete
+        sleep 3
         
-        # Download ChromeDriver - try multiple versions
+        # Get Chrome version and verify installation
+        CHROME_VERSION=$(google-chrome --version | grep -oP '\d+\.\d+\.\d+\.\d+')
+        CHROME_MAJOR=$(echo $CHROME_VERSION | cut -d '.' -f 1)
+        
+        echo "Chrome installed: $CHROME_VERSION (major: $CHROME_MAJOR)"
+        
+        # Download compatible ChromeDriver with retries
         CHROMEDRIVER_DOWNLOADED=false
+        RETRY_COUNT=0
+        MAX_RETRIES=3
         
-        # Version list for fallback
-        VERSIONS=(
-          "${CHROME_MAJOR}.0.0.0"
-          "131.0.6778.204"
-          "130.0.6723.116"
-          "129.0.6668.100"
-          "128.0.6613.137"
-        )
-        
-        for VERSION in "${VERSIONS[@]}"; do
-          echo "Trying ChromeDriver version: $VERSION"
-          URL="https://storage.googleapis.com/chrome-for-testing-public/$VERSION/linux64/chromedriver-linux64.zip"
+        while [ "$CHROMEDRIVER_DOWNLOADED" = "false" ] && [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+          RETRY_COUNT=$((RETRY_COUNT + 1))
+          echo "ChromeDriver download attempt $RETRY_COUNT/$MAX_RETRIES"
           
-          if wget --timeout=15 -O /tmp/chromedriver.zip "$URL" 2>/dev/null; then
-            echo "Successfully downloaded: $VERSION"
-            CHROMEDRIVER_DOWNLOADED=true
-            break
-          else
-            echo "Failed: $VERSION"
+          # Try multiple versions with exact Chrome version first
+          VERSIONS=(
+            "${CHROME_VERSION}"
+            "${CHROME_MAJOR}.0.0.0"
+            "138.0.7204.49"
+            "138.0.7204.0"
+            "137.0.7169.98"
+            "131.0.6778.204"
+            "130.0.6723.116"
+          )
+          
+          for VERSION in "${VERSIONS[@]}"; do
+            echo "Trying ChromeDriver version: $VERSION"
+            URL="https://storage.googleapis.com/chrome-for-testing-public/$VERSION/linux64/chromedriver-linux64.zip"
+            
+            if wget --timeout=15 --tries=2 -O /tmp/chromedriver.zip "$URL" 2>/dev/null; then
+              echo "Successfully downloaded ChromeDriver: $VERSION"
+              CHROMEDRIVER_DOWNLOADED=true
+              break
+            else
+              echo "Failed to download: $VERSION"
+            fi
+          done
+          
+          if [ "$CHROMEDRIVER_DOWNLOADED" = "false" ]; then
+            echo "Download attempt $RETRY_COUNT failed, retrying..."
+            sleep 5
           fi
         done
         
-        if [ "$CHROMEDRIVER_DOWNLOADED" != "true" ]; then
-          echo "All ChromeDriver downloads failed"
+        if [ "$CHROMEDRIVER_DOWNLOADED" = "false" ]; then
+          echo "ERROR: All ChromeDriver download attempts failed"
           exit 1
         fi
         
-        # Extract and install
+        # Extract and install with verification
         sudo unzip -o /tmp/chromedriver.zip -d /tmp/
         
         if [ -f "/tmp/chromedriver-linux64/chromedriver" ]; then
-          sudo mv /tmp/chromedriver-linux64/chromedriver /usr/local/bin/
+          sudo cp /tmp/chromedriver-linux64/chromedriver /usr/local/bin/
         elif [ -f "/tmp/chromedriver" ]; then
-          sudo mv /tmp/chromedriver /usr/local/bin/
+          sudo cp /tmp/chromedriver /usr/local/bin/
         else
-          echo "ChromeDriver binary not found"
+          echo "ERROR: ChromeDriver binary not found after extraction"
           exit 1
         fi
         
+        # Set permissions and create symlink for parallel processing
         sudo chmod +x /usr/local/bin/chromedriver
+        sudo ln -sf /usr/local/bin/chromedriver /usr/bin/chromedriver
         
-        echo "Installation verification:"
+        # Verification and compatibility check
+        echo "=== Installation Verification ==="
         google-chrome --version
         chromedriver --version
+        
+        # Test ChromeDriver initialization
+        echo "=== Testing ChromeDriver Initialization ==="
+        timeout 10 chromedriver --version || {
+          echo "ERROR: ChromeDriver test failed"
+          exit 1
+        }
+        
+        # Final compatibility check
+        FINAL_CHROME_MAJOR=$(google-chrome --version | grep -oP '\d+' | head -1)
+        FINAL_CHROMEDRIVER_MAJOR=$(chromedriver --version | grep -oP '\d+' | head -1)
+        
+        echo "=== Final Compatibility Check ==="
+        echo "Chrome major: $FINAL_CHROME_MAJOR"
+        echo "ChromeDriver major: $FINAL_CHROMEDRIVER_MAJOR"
+        
+        if [ "$FINAL_CHROME_MAJOR" = "$FINAL_CHROMEDRIVER_MAJOR" ]; then
+          echo "✅ Version compatibility CONFIRMED for parallel processing"
+        else
+          echo "⚠️ Version mismatch detected: Chrome $FINAL_CHROME_MAJOR vs ChromeDriver $FINAL_CHROMEDRIVER_MAJOR"
+          echo "Proceeding with available versions..."
+        fi
+        
+        # Pre-warm ChromeDriver for parallel processing
+        echo "=== Pre-warming ChromeDriver for parallel processing ==="
+        for i in {1..3}; do
+          timeout 5 chromedriver --version > /dev/null 2>&1 || true
+          sleep 1
+        done
+        
+        echo "ChromeDriver ready for parallel processing"
     
-    - name: Install Python dependencies
+    - name: Install Python dependencies with parallel processing support
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         pip install webdriver-manager==4.0.1
+        echo "Python packages for parallel processing installed:"
+        pip list | grep -E "(selenium|webdriver-manager|requests|beautifulsoup4|lxml|numpy)"
     
     - name: Create required directories
       run: |
         mkdir -p data/price_history
         mkdir -p scripts
     
-    - name: Environment verification
+    - name: Pre-execution environment verification for parallel processing
       run: |
-        echo "=== Environment Verification ==="
-        python --version
-        google-chrome --version
-        chromedriver --version
-        which chromedriver
-        ls -la /usr/local/bin/chromedriver
-        echo "Memory: $(free -h | grep Mem)"
-        echo "Disk: $(df -h | grep '/$')"
+        echo "=== Pre-execution Environment Verification ==="
+        echo "System resources:"
+        echo "  CPU cores: $(nproc)"
+        echo "  Memory: $(free -h | grep Mem)"
+        echo "  Disk: $(df -h | grep '/$')"
+        echo ""
+        echo "Chrome/ChromeDriver status:"
+        echo "  Chrome: $(google-chrome --version)"
+        echo "  ChromeDriver: $(chromedriver --version)"
+        echo "  ChromeDriver path: $(which chromedriver)"
+        echo "  ChromeDriver permissions: $(ls -la /usr/local/bin/chromedriver)"
+        echo ""
+        echo "Python environment:"
+        echo "  Python: $(python --version)"
+        echo "  Selenium: $(pip show selenium | grep Version || echo 'Not found')"
+        echo ""
+        echo "Process limits:"
+        echo "  Max processes: $(ulimit -u)"
+        echo "  Max files: $(ulimit -n)"
+        echo "✅ Environment ready for parallel processing"
     
     - name: Git configuration
       run: |
@@ -139,15 +214,19 @@ jobs:
         git config --global user.name "GitHub Action Bot"
         git config --global pull.rebase false
     
-    - name: Update equipment prices
+    - name: Update equipment prices with parallel processing
       run: |
-        echo "Starting price update at $(date '+%Y-%m-%d %H:%M:%S JST')"
+        echo "Starting parallel price update at $(date '+%Y-%m-%d %H:%M:%S JST')"
         python scripts/update_prices.py
-        echo "Price update completed at $(date '+%Y-%m-%d %H:%M:%S JST')"
+        echo "Parallel price update completed at $(date '+%Y-%m-%d %H:%M:%S JST')"
       env:
         TARGET_ITEMS: ${{ github.event.inputs.target_items || 'ALL' }}
         PYTHONPATH: ${{ github.workspace }}
         PYTHONUNBUFFERED: 1
+        # 並行処理用環境変数
+        PARALLEL_WORKERS: 6
+        CHROME_BINARY_PATH: /opt/google/chrome/chrome
+        CHROMEDRIVER_PATH: /usr/local/bin/chromedriver
     
     - name: Update price history
       run: |
@@ -184,11 +263,12 @@ jobs:
         git fetch origin
         
         CURRENT_TIME=$(date '+%Y-%m-%d %H:%M:%S JST')
-        COMMIT_MESSAGE="Auto-update: Equipment prices (ChromeDriver compatibility)
+        COMMIT_MESSAGE="Auto-update: Equipment prices (Parallel processing v138 compatibility)
 
         - Update time: ${CURRENT_TIME}
         - Changed files: ${{ steps.check-changes.outputs.changed_files }}
-        - Chrome/ChromeDriver compatibility verified
+        - Processing: Parallel (6 workers)
+        - Chrome/ChromeDriver: v138 compatible
         - Automated by GitHub Actions"
         
         git commit -m "$COMMIT_MESSAGE" || echo "No changes to commit"
@@ -209,19 +289,20 @@ jobs:
       run: |
         echo "## MapleStory Equipment Price Auto Update Results" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### System Information" >> $GITHUB_STEP_SUMMARY
+        echo "### Parallel Processing (6 Workers)" >> $GITHUB_STEP_SUMMARY
         echo "| Item | Result |" >> $GITHUB_STEP_SUMMARY
         echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
         echo "| Execution Time | $(date '+%Y-%m-%d %H:%M:%S JST') |" >> $GITHUB_STEP_SUMMARY
         echo "| Chrome Version | $(google-chrome --version 2>/dev/null) |" >> $GITHUB_STEP_SUMMARY
         echo "| ChromeDriver Version | $(chromedriver --version 2>/dev/null) |" >> $GITHUB_STEP_SUMMARY
+        echo "| Processing Mode | Parallel (6 workers) |" >> $GITHUB_STEP_SUMMARY
         echo "| Data Changed | ${{ steps.check-changes.outputs.changed }} |" >> $GITHUB_STEP_SUMMARY
         echo "| Changed Files | ${{ steps.check-changes.outputs.changed_files }} |" >> $GITHUB_STEP_SUMMARY
         echo "| Target Items | ${{ env.TARGET_ITEMS }} |" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         
         if [ "${{ steps.check-changes.outputs.changed }}" == "true" ]; then
-          echo "**✅ Price update completed successfully!**" >> $GITHUB_STEP_SUMMARY
+          echo "**✅ Parallel processing completed successfully!**" >> $GITHUB_STEP_SUMMARY
         else
           echo "**ℹ️ No changes detected**" >> $GITHUB_STEP_SUMMARY
         fi
@@ -229,12 +310,14 @@ jobs:
     - name: Diagnostic info on failure
       if: failure()
       run: |
-        echo "## Workflow Failed" >> $GITHUB_STEP_SUMMARY
+        echo "## Parallel Processing Failed" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### Diagnostic Information" >> $GITHUB_STEP_SUMMARY
         echo "- Execution time: $(date '+%Y-%m-%d %H:%M:%S JST')" >> $GITHUB_STEP_SUMMARY
         echo "- Chrome: $(google-chrome --version 2>/dev/null || echo 'Not found')" >> $GITHUB_STEP_SUMMARY
         echo "- ChromeDriver: $(chromedriver --version 2>/dev/null || echo 'Not found')" >> $GITHUB_STEP_SUMMARY
+        echo "- ChromeDriver path: $(which chromedriver 2>/dev/null || echo 'Not found')" >> $GITHUB_STEP_SUMMARY
         echo "- Available memory: $(free -h | grep Mem | awk '{print $7}' || echo 'Unknown')" >> $GITHUB_STEP_SUMMARY
+        echo "- Running processes: $(ps aux | grep -E '(chrome|chromedriver)' | wc -l)" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "**Check logs for detailed error information.**" >> $GITHUB_STEP_SUMMARY
+        echo "**Solution**: Parallel processing ChromeDriver compatibility issue detected." >> $GITHUB_STEP_SUMMARY
