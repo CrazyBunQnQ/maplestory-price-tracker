@@ -931,7 +931,7 @@
         </div>
     </div>
     <script>
-        // 修正：一貫性のあるデータ生成のためのシードベースランダム関数
+        // 修正：正確な時間軸生成のためのシードベースランダム関数
         class SeededRandom {
             constructor(seed) {
                 this.seed = seed;
@@ -947,7 +947,7 @@
             }
         }
 
-        // MapleStory価格追跡システム（完全修正版）
+        // MapleStory価格追跡システム（時間軸修正版）
         class MapleStoryPriceTracker {
             constructor() {
                 this.rawData = {};
@@ -1648,7 +1648,7 @@
             }
         }
 
-        // 修正：平均価格追加・グラフ一貫性修正版チャート管理クラス
+        // 修正：正確な時間軸を生成するチャート管理クラス
         class PriceChartManager {
             constructor() {
                 this.tooltip = null;
@@ -1658,12 +1658,37 @@
                 this.currentInterval = '1hour';
                 this.currentTotalInterval = '1hour';
                 this.dualAxisMode = false;
-                this.includeMarketAverage = false; // 新規追加
+                this.includeMarketAverage = false;
+                
+                // 修正：正確な間隔情報と時間軸設定
                 this.intervals = {
-                    '1hour': '1週間分',
-                    '12hour': '1ヶ月分', 
-                    '1day': '1年分'
+                    '1hour': '1週間分（1時間毎）',
+                    '12hour': '1ヶ月分（12時間毎）', 
+                    '1day': '1年分（1日毎）'
                 };
+                
+                // 修正：正確な時間軸設定
+                this.intervalConfigs = {
+                    '1hour': { 
+                        points: 168,        // 7日 × 24時間 = 168ポイント
+                        minuteStep: 60,     // 1時間 = 60分
+                        maxTicks: 8,        // 横軸の最大ティック数
+                        timeFormat: 'MM/DD HH:mm'
+                    },
+                    '12hour': { 
+                        points: 60,         // 30日 × 2回/日 = 60ポイント
+                        minuteStep: 720,    // 12時間 = 720分
+                        maxTicks: 10,
+                        timeFormat: 'MM/DD HH:mm'
+                    },
+                    '1day': { 
+                        points: 365,        // 365日
+                        minuteStep: 1440,   // 1日 = 1440分
+                        maxTicks: 12,
+                        timeFormat: 'MM/DD'
+                    }
+                };
+                
                 this.chartDataCache = new Map();
                 this.isInitialized = false;
                 this.initializationAttempts = 0;
@@ -1776,42 +1801,54 @@
                 }
             }
             
-            // 修正：一貫性のあるサンプルデータ生成
-            generateConsistentSampleData(baseValue, intervalType, itemId = null) {
+            // 修正：正確な時間軸を生成するデータ生成関数
+            generateAccurateTimeAxisData(baseValue, intervalType, itemId = null) {
                 const now = new Date();
                 const dataPoints = [];
                 const labels = [];
                 
-                // 間隔別のポイント数と時間間隔を統一
-                const intervalConfig = {
-                    '1hour': { points: 168, hourStep: 1 },      // 1週間分（1時間毎）
-                    '12hour': { points: 60, hourStep: 12 },      // 1ヶ月分（12時間毎）
-                    '1day': { points: 365, hourStep: 24 }        // 1年分（1日毎）
-                };
-                
-                const config = intervalConfig[intervalType];
-                if (!config) return { labels: [], data: [] };
+                const config = this.intervalConfigs[intervalType];
+                if (!config) {
+                    console.error(`Unknown interval type: ${intervalType}`);
+                    return { labels: [], data: [] };
+                }
                 
                 // シード値を固定（アイテムIDベース）
                 const seed = itemId ? parseInt(itemId) : 12345;
                 const rng = new SeededRandom(seed + intervalType.charCodeAt(0));
                 
+                console.log(`Generating ${config.points} data points for ${intervalType} (${config.minuteStep} minute intervals)`);
+                
                 for (let i = config.points - 1; i >= 0; i--) {
-                    const time = new Date(now.getTime() - i * config.hourStep * 60 * 60 * 1000);
+                    // 正確な時間計算（分単位で計算）
+                    const time = new Date(now.getTime() - i * config.minuteStep * 60 * 1000);
                     
-                    // 時刻フォーマット
-                    if (intervalType === '1hour' || intervalType === '12hour') {
-                        labels.push(time.toLocaleDateString('ja-JP', { month: '2-digit', day: '2-digit' }) + ' ' + 
-                                  time.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }));
+                    // 時刻フォーマット（設定に基づく）
+                    let label;
+                    if (config.timeFormat === 'MM/DD') {
+                        label = time.toLocaleDateString('ja-JP', { 
+                            month: '2-digit', 
+                            day: '2-digit' 
+                        });
                     } else {
-                        labels.push(time.toLocaleDateString('ja-JP', { month: '2-digit', day: '2-digit' }));
+                        label = time.toLocaleDateString('ja-JP', { 
+                            month: '2-digit', 
+                            day: '2-digit' 
+                        }) + ' ' + time.toLocaleTimeString('ja-JP', { 
+                            hour: '2-digit', 
+                            minute: '2-digit' 
+                        });
                     }
+                    
+                    labels.push(label);
                     
                     // 価格変動をシミュレート（±15%の範囲でシード固定）
                     const variation = (rng.next() - 0.5) * 0.3;
                     const price = Math.round(baseValue * (1 + variation));
                     dataPoints.push(price);
                 }
+                
+                console.log(`Generated time axis data: ${labels.length} labels, first: ${labels[0]}, last: ${labels[labels.length-1]}`);
                 
                 return { labels, data: dataPoints };
             }
@@ -1854,15 +1891,15 @@
                 }
             }
             
-            // 修正：一貫性のある総価格サンプルデータ
+            // 修正：正確な時間軸を持つ総価格サンプルデータ
             getSampleTotalPriceChartData(interval) {
-                console.log(`Generating consistent sample total price data for ${interval}`);
+                console.log(`Generating accurate sample total price data for ${interval}`);
                 
-                const baseTotal = 1000000000; // 10億NESO
-                const baseAvg = 4000000; // 400万NESO
+                const baseTotal = 864000000; // 8.64億NESO（画像で見える値）
+                const baseAvg = 3075967; // 約307万NESO（画像で見える値）
                 
-                const totalData = this.generateConsistentSampleData(baseTotal, interval, 'total');
-                const avgData = this.generateConsistentSampleData(baseAvg, interval, 'average');
+                const totalData = this.generateAccurateTimeAxisData(baseTotal, interval, 'total');
+                const avgData = this.generateAccurateTimeAxisData(baseAvg, interval, 'average');
                 
                 return {
                     labels: totalData.labels,
@@ -1910,6 +1947,8 @@
                 }
                 
                 try {
+                    const config = this.intervalConfigs[this.currentTotalInterval];
+                    
                     this.totalPriceChart = new Chart(ctx, {
                         type: 'line',
                         data: chartData,
@@ -1947,7 +1986,15 @@
                                     },
                                     ticks: {
                                         font: { size: 10 },
-                                        maxTicksLimit: 8
+                                        maxTicksLimit: config.maxTicks,
+                                        callback: function(value, index, values) {
+                                            // 均等に間引いてラベルを表示
+                                            const interval = Math.ceil(values.length / config.maxTicks);
+                                            if (index % interval === 0 || index === values.length - 1) {
+                                                return this.getLabelForValue(value);
+                                            }
+                                            return '';
+                                        }
                                     }
                                 },
                                 y: {
@@ -2005,7 +2052,7 @@
                         }
                     });
                     
-                    console.log(`Total price chart rendered with ${chartData.labels.length} data points`);
+                    console.log(`Total price chart rendered with ${chartData.labels.length} data points for ${this.currentTotalInterval}`);
                     
                 } catch (error) {
                     console.error('Error rendering total price chart:', error);
@@ -2024,14 +2071,14 @@
                 this.loadTotalPriceChart();
             }
             
-            // 修正：個別アイテムの一貫性のあるサンプルデータ
+            // 修正：個別アイテムの正確な時間軸サンプルデータ
             getSampleChartData(itemId) {
                 const itemName = tracker?.rawData?.[itemId]?.item_name || 'Unknown Item';
                 const basePrice = tracker?.parsePrice(tracker.rawData?.[itemId]?.item_price) || 1000000;
                 
-                console.log(`Generating consistent sample data for ${itemName} (base price: ${basePrice})`);
+                console.log(`Generating accurate sample data for ${itemName} (base price: ${basePrice}) with interval ${this.currentInterval}`);
                 
-                const sampleData = this.generateConsistentSampleData(basePrice, this.currentInterval, itemId);
+                const sampleData = this.generateAccurateTimeAxisData(basePrice, this.currentInterval, itemId);
                 
                 return {
                     labels: sampleData.labels,
@@ -2168,11 +2215,23 @@
                     };
                     
                     // 縦軸設定
+                    const config = this.intervalConfigs[this.currentInterval];
                     const scalesConfig = {
                         x: {
                             title: {
                                 display: true,
                                 text: `時間軸 (${this.intervals[this.currentInterval]})`
+                            },
+                            ticks: {
+                                maxTicksLimit: config.maxTicks,
+                                callback: function(value, index, values) {
+                                    // 均等に間引いてラベルを表示
+                                    const interval = Math.ceil(values.length / config.maxTicks);
+                                    if (index % interval === 0 || index === values.length - 1) {
+                                        return this.getLabelForValue(value);
+                                    }
+                                    return '';
+                                }
                             }
                         }
                     };
@@ -2296,7 +2355,7 @@
                         };
                     }
                     
-                    const avgData = this.generateConsistentSampleData(4000000, interval, 'market_average');
+                    const avgData = this.generateAccurateTimeAxisData(3075967, interval, 'market_average');
                     return {
                         labels: avgData.labels,
                         data: avgData.data
@@ -2414,6 +2473,8 @@
                 }
                 
                 try {
+                    const config = this.intervalConfigs[this.currentInterval];
+                    
                     this.miniChart = new Chart(ctx, {
                         type: 'line',
                         data: chartData,
@@ -2441,7 +2502,15 @@
                                     display: true,
                                     ticks: { 
                                         font: { size: 9 },
-                                        maxTicksLimit: 4
+                                        maxTicksLimit: 4,
+                                        callback: function(value, index, values) {
+                                            // 均等に間引いてラベルを表示
+                                            const interval = Math.ceil(values.length / 4);
+                                            if (index % interval === 0 || index === values.length - 1) {
+                                                return this.getLabelForValue(value);
+                                            }
+                                            return '';
+                                        }
                                     }
                                 },
                                 y: { 
