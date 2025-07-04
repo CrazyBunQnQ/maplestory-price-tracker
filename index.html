@@ -1678,7 +1678,7 @@
                     '12hour': { 
                         points: 60,         // 30日 × 2回/日 = 60ポイント
                         minuteStep: 720,    // 12時間 = 720分
-                        maxTicks: 10,
+                        maxTicks: 15,       // 12時間ごとなので、より多くのティックを表示
                         timeFormat: 'MM/DD HH:mm'
                     },
                     '1day': { 
@@ -1986,15 +1986,7 @@
                                     },
                                     ticks: {
                                         font: { size: 10 },
-                                        maxTicksLimit: config.maxTicks,
-                                        callback: function(value, index, values) {
-                                            // 均等に間引いてラベルを表示
-                                            const interval = Math.ceil(values.length / config.maxTicks);
-                                            if (index % interval === 0 || index === values.length - 1) {
-                                                return this.getLabelForValue(value);
-                                            }
-                                            return '';
-                                        }
+                                        maxTicksLimit: config.maxTicks
                                     }
                                 },
                                 y: {
@@ -2223,15 +2215,7 @@
                                 text: `時間軸 (${this.intervals[this.currentInterval]})`
                             },
                             ticks: {
-                                maxTicksLimit: config.maxTicks,
-                                callback: function(value, index, values) {
-                                    // 均等に間引いてラベルを表示
-                                    const interval = Math.ceil(values.length / config.maxTicks);
-                                    if (index % interval === 0 || index === values.length - 1) {
-                                        return this.getLabelForValue(value);
-                                    }
-                                    return '';
-                                }
+                                maxTicksLimit: config.maxTicks
                             }
                         }
                     };
@@ -2502,15 +2486,7 @@
                                     display: true,
                                     ticks: { 
                                         font: { size: 9 },
-                                        maxTicksLimit: 4,
-                                        callback: function(value, index, values) {
-                                            // 均等に間引いてラベルを表示
-                                            const interval = Math.ceil(values.length / 4);
-                                            if (index % interval === 0 || index === values.length - 1) {
-                                                return this.getLabelForValue(value);
-                                            }
-                                            return '';
-                                        }
+                                        maxTicksLimit: 4
                                     }
                                 },
                                 y: { 
