@@ -15,9 +15,13 @@ class HistoricalPriceTracker:
         self.json_file_path = json_file_path
         self.history_dir = history_dir
         
-        # 環境変数による強制検出設定
-        self.force_price_detection = os.getenv('FORCE_PRICE_DETECTION', 'false').lower() == 'true'
+        # 緩和版設定: デフォルトで強制検出を有効化
+        self.force_price_detection = os.getenv('FORCE_PRICE_DETECTION', 'true').lower() == 'true'
         self.force_rebuild_history = os.getenv('FORCE_REBUILD_HISTORY', 'false').lower() == 'true'
+        
+        # 緩和版設定: より積極的なデータ蓄積
+        self.relaxed_mode = os.getenv('RELAXED_MODE', 'true').lower() == 'true'
+        self.time_threshold_ratio = float(os.getenv('TIME_THRESHOLD_RATIO', '0.7'))  # 70%経過で更新
         
         # ディレクトリ作成
         os.makedirs(history_dir, exist_ok=True)
@@ -47,12 +51,28 @@ class HistoricalPriceTracker:
         # 現在の価格を記録するためのキャッシュ
         self.current_prices = {}
         
+        # 緩和版: 更新統計
+        self.update_statistics = {
+            'forced_updates': 0,
+            'time_based_updates': 0,
+            'price_change_updates': 0,
+            'first_time_updates': 0
+        }
+        
+        logger.info("🔧 価格履歴追跡システム（緩和版）初期化")
+        logger.info(f"🔄 強制価格検出: {'有効' if self.force_price_detection else '無効'}")
+        logger.info(f"⚡ 緩和モード: {'有効' if self.relaxed_mode else '無効'}")
+        logger.info(f"⏰ 時間閾値: {self.time_threshold_ratio*100:.0f}%経過で更新")
+        
         self.load_existing_history()
 
     def load_existing_history(self):
         """既存の価格履歴を読み込み（個別アイテムのみ）"""
         try:
             total_records = 0
+            oldest_record = None
+            newest_record = None
+            
             for interval_type in self.price_intervals:
                 history_file = os.path.join(self.history_dir, f"history_{interval_type}.json")
                 if os.path.exists(history_file):
@@ -69,9 +89,28 @@ class HistoricalPriceTracker:
                                 maxlen=self.price_intervals[interval_type]['maxlen']
                             )
                             total_records += len(history)
+                            
+                            # 最古・最新記録の追跡
+                            for record in history:
+                                timestamp = record.get('timestamp')
+                                if timestamp:
+                                    if oldest_record is None or timestamp < oldest_record:
+                                        oldest_record = timestamp
+                                    if newest_record is None or timestamp > newest_record:
+                                        newest_record = timestamp
+                        
                         logger.info(f"{interval_type} 履歴ファイル読み込み: {item_count}アイテム")
             
             logger.info(f"個別アイテム価格履歴読み込み完了: {len(self.price_history)}アイテム、{total_records}レコード")
+            
+            if oldest_record and newest_record:
+                try:
+                    oldest_dt = datetime.fromisoformat(oldest_record.replace('Z', '+00:00'))
+                    newest_dt = datetime.fromisoformat(newest_record.replace('Z', '+00:00'))
+                    data_span = newest_dt - oldest_dt
+                    logger.info(f"データ蓄積期間: {data_span.days}日 {data_span.seconds//3600}時間")
+                except Exception as e:
+                    logger.debug(f"データ期間計算エラー: {e}")
             
             if self.force_price_detection:
                 logger.info("🔄 強制価格検出モードが有効です")
@@ -87,31 +126,40 @@ class HistoricalPriceTracker:
                 
                 # dequeをリストに変換して保存
                 interval_data = {}
+                total_points = 0
+                
                 for item_id, intervals in self.price_history.items():
                     if interval_type in intervals and len(intervals[interval_type]) > 0:
                         interval_data[item_id] = list(intervals[interval_type])
+                        total_points += len(intervals[interval_type])
                 
                 with open(history_file, 'w', encoding='utf-8') as f:
                     json.dump(interval_data, f, ensure_ascii=False, indent=2)
                 
-                logger.info(f"{interval_type} 個別履歴保存完了: {len(interval_data)}アイテム")
+                logger.info(f"{interval_type} 個別履歴保存完了: {len(interval_data)}アイテム、{total_points}ポイント")
         except Exception as e:
             logger.error(f"価格履歴保存エラー: {e}")
 
     def should_update_interval(self, item_id, interval_type, current_price):
-        """指定した間隔での更新が必要かチェック（価格変更検出強化版）"""
-        # 強制検出モードの場合
+        """緩和版: より積極的な更新判定（関数名は維持）"""
+        
+        # 強制検出モードの場合は無条件更新
         if self.force_price_detection:
+            self.update_statistics['forced_updates'] += 1
             return True
         
+        # 初回データの場合
         if item_id not in self.price_history:
+            self.update_statistics['first_time_updates'] += 1
             return True
         
         if interval_type not in self.price_history[item_id]:
+            self.update_statistics['first_time_updates'] += 1
             return True
         
         history = self.price_history[item_id][interval_type]
         if not history:
+            self.update_statistics['first_time_updates'] += 1
             return True
         
         last_entry = history[-1]
@@ -120,21 +168,42 @@ class HistoricalPriceTracker:
         now = datetime.now()
         
         required_interval = self.price_intervals[interval_type]['interval']
-        time_condition = now - last_time >= required_interval
+        
+        # 緩和版: 時間閾値を70%に設定（より頻繁な更新）
+        time_threshold = required_interval.total_seconds() * self.time_threshold_ratio
+        elapsed_seconds = (now - last_time).total_seconds()
+        time_condition = elapsed_seconds >= time_threshold
         
         # **重要な修正**: 価格変更も検出対象に追加
-        price_changed = current_price != last_price
+        price_changed = current_price != last_price and current_price > 0
         
-        # 時間間隔が満たされているか、価格が変更された場合に更新
-        should_update = time_condition or price_changed
+        # 緩和モードでは時間条件を優先
+        if self.relaxed_mode:
+            if time_condition:
+                self.update_statistics['time_based_updates'] += 1
+                elapsed_hours = elapsed_seconds / 3600
+                logger.debug(f"時間経過更新 {item_id} ({interval_type}): {elapsed_hours:.1f}h >= {time_threshold/3600:.1f}h")
+                return True
+            elif price_changed:
+                self.update_statistics['price_change_updates'] += 1
+                logger.info(f"価格変更検出 {item_id} ({interval_type}): {last_price:,} -> {current_price:,}")
+                return True
+        else:
+            # 従来の条件（時間経過 OR 価格変更）
+            should_update = time_condition or price_changed
+            
+            if should_update and price_changed:
+                self.update_statistics['price_change_updates'] += 1
+                logger.info(f"価格変更検出 {item_id} ({interval_type}): {last_price:,} -> {current_price:,}")
+            elif should_update:
+                self.update_statistics['time_based_updates'] += 1
+                
+            return should_update
         
-        if should_update and price_changed:
-            logger.info(f"価格変更検出 {item_id} ({interval_type}): {last_price:,} -> {current_price:,}")
-        
-        return should_update
+        return False
 
     def detect_price_changes_from_last_updated(self, item_data):
-        """last_updatedフィールドによる最近の更新検出"""
+        """last_updatedフィールドによる最近の更新検出（緩和版）"""
         try:
             last_updated = item_data.get('last_updated')
             if not last_updated:
@@ -144,9 +213,9 @@ class HistoricalPriceTracker:
             update_time = datetime.fromisoformat(last_updated.replace('Z', '+00:00'))
             now = datetime.now()
             
-            # 1時間以内の更新を検出
+            # 緩和版: 2時間以内の更新を検出（従来は1時間）
             time_diff = (now - update_time).total_seconds()
-            is_recent_update = time_diff < 3600  # 1時間
+            is_recent_update = time_diff < 7200  # 2時間
             
             if is_recent_update:
                 logger.info(f"最近の更新検出: {item_data.get('item_name')} - {time_diff:.0f}秒前")
@@ -159,7 +228,7 @@ class HistoricalPriceTracker:
             return False
 
     def update_price_history(self, item_id, item_name, current_price):
-        """価格履歴を更新（価格変更検出強化版）"""
+        """価格履歴を更新（緩和版・関数名維持）"""
         timestamp = datetime.now().isoformat()
         price_point = {
             'timestamp': timestamp,
@@ -174,7 +243,7 @@ class HistoricalPriceTracker:
         # 現在価格をキャッシュに保存
         self.current_prices[item_id] = current_price
         
-        # 各間隔での更新判定と追加（価格変更検出強化）
+        # 各間隔での更新判定と追加（緩和版）
         updated_intervals = []
         for interval_type, config in self.price_intervals.items():
             if self.should_update_interval(item_id, interval_type, current_price):
@@ -190,7 +259,7 @@ class HistoricalPriceTracker:
         return updated_intervals
 
     def update_from_current_prices(self):
-        """現在の価格JSONから履歴を更新（価格変更検出強化版）"""
+        """現在の価格JSONから履歴を更新（緩和版・関数名維持）"""
         try:
             if not os.path.exists(self.json_file_path):
                 logger.error(f"価格ファイルが見つかりません: {self.json_file_path}")
@@ -207,6 +276,9 @@ class HistoricalPriceTracker:
             
             logger.info(f"現在の価格データ読み込み: {len(current_data)}アイテム")
             
+            # 統計用カウンタリセット
+            self.update_statistics = {k: 0 for k in self.update_statistics}
+            
             updated_count = 0
             processed_count = 0
             force_updated_count = 0
@@ -222,7 +294,7 @@ class HistoricalPriceTracker:
                 if not item_data.get('item_name') or not item_data.get('item_price'):
                     continue
                 
-                # 最近の更新検出
+                # 最近の更新検出（緩和版）
                 is_recent_update = self.detect_price_changes_from_last_updated(item_data)
                 if is_recent_update:
                     recent_update_count += 1
@@ -258,6 +330,12 @@ class HistoricalPriceTracker:
             
             logger.info(f"個別アイテム処理完了: 処理{processed_count}件、更新{updated_count}件")
             
+            # 緩和版統計表示
+            logger.info(f"更新理由別統計:")
+            for reason, count in self.update_statistics.items():
+                if count > 0:
+                    logger.info(f"  {reason}: {count}回")
+            
             if self.force_price_detection:
                 logger.info(f"🔄 強制検出による更新: {force_updated_count}件")
             
@@ -268,10 +346,10 @@ class HistoricalPriceTracker:
                 self.save_history_to_files()
                 logger.info(f"✅ 個別価格履歴更新完了: {updated_count}アイテム")
             else:
-                if not self.force_price_detection:
-                    logger.info("💡 価格変更が検出されませんでした（強制検出モードを有効にしてください）")
+                if not self.force_price_detection and not self.relaxed_mode:
+                    logger.info("💡 価格変更が検出されませんでした（FORCE_PRICE_DETECTION=true を試してください）")
                 else:
-                    logger.info("⚠️ 強制検出モードでも更新がありませんでした")
+                    logger.info("⚠️ 緩和設定でも更新がありませんでした")
             
             return updated_count
             
@@ -342,7 +420,12 @@ class HistoricalPriceTracker:
         """履歴統計情報を取得"""
         stats = {
             'total_items': len(self.price_history),
-            'intervals': {}
+            'intervals': {},
+            'configuration': {
+                'force_price_detection': self.force_price_detection,
+                'relaxed_mode': self.relaxed_mode,
+                'time_threshold_ratio': self.time_threshold_ratio
+            }
         }
         
         for interval_type, config in self.price_intervals.items():
@@ -355,15 +438,16 @@ class HistoricalPriceTracker:
                 'items_with_data': item_count,
                 'total_data_points': total_points,
                 'description': config['description'],
-                'max_points': config['maxlen']
+                'max_points': config['maxlen'],
+                'average_points_per_item': total_points / max(item_count, 1)
             }
         
         return stats
 
 def main():
-    """メイン実行：現在の価格から履歴を更新（価格変更検出強化版）"""
+    """メイン実行：現在の価格から履歴を更新（緩和版）"""
     logger.info("=" * 50)
-    logger.info("MapleStory個別アイテム価格履歴更新開始（価格変更検出強化版）")
+    logger.info("MapleStory個別アイテム価格履歴更新開始（緩和版）")
     logger.info("=" * 50)
     
     try:
@@ -378,12 +462,13 @@ def main():
         stats = tracker.get_statistics()
         logger.info(f"📊 個別アイテム価格履歴統計:")
         logger.info(f"  総アイテム数: {stats['total_items']}")
+        logger.info(f"  設定: 強制検出={stats['configuration']['force_price_detection']}, 緩和モード={stats['configuration']['relaxed_mode']}")
         for interval, data in stats['intervals'].items():
             logger.info(f"  {interval}: {data['items_with_data']}件 ({data['description']}) - {data['total_data_points']}ポイント")
         
-        # 強制検出モードの結果表示
-        if tracker.force_price_detection:
-            logger.info(f"🔄 強制価格検出モード結果: {updated}アイテム更新")
+        # 緩和版結果表示
+        if tracker.force_price_detection or tracker.relaxed_mode:
+            logger.info(f"🔄 緩和版モード結果: {updated}アイテム更新")
         
         logger.info("=" * 50)
         logger.info(f"✅ 個別アイテム更新完了: {updated}アイテム")
