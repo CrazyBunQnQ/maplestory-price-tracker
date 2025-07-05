@@ -1,5 +1,362 @@
 [
   {
+    "timestamp": "2025-07-01T00:00:00",
+    "total_price": 847547982,
+    "item_count": 280,
+    "average_price": 3026957,
+    "original_points": 280
+  },
+  {
+    "timestamp": "2025-07-01T01:00:00",
+    "total_price": 848739176,
+    "item_count": 280,
+    "average_price": 3031211,
+    "original_points": 280
+  },
+  {
+    "timestamp": "2025-07-01T02:00:00",
+    "total_price": 854602142,
+    "item_count": 280,
+    "average_price": 3052150,
+    "original_points": 840
+  },
+  {
+    "timestamp": "2025-07-01T03:00:00",
+    "total_price": 856055203,
+    "item_count": 280,
+    "average_price": 3057340,
+    "original_points": 280
+  },
+  {
+    "timestamp": "2025-07-01T04:00:00",
+    "total_price": 858420921,
+    "item_count": 280,
+    "average_price": 3065789,
+    "original_points": 560
+  },
+  {
+    "timestamp": "2025-07-01T05:00:00",
+    "total_price": 860282840,
+    "item_count": 280,
+    "average_price": 3072438,
+    "original_points": 560
+  },
+  {
+    "timestamp": "2025-07-01T06:00:00",
+    "total_price": 860219780,
+    "item_count": 280,
+    "average_price": 3072213,
+    "original_points": 560
+  },
+  {
+    "timestamp": "2025-07-01T07:00:00",
+    "total_price": 860062472,
+    "item_count": 280,
+    "average_price": 3071651,
+    "original_points": 560
+  },
+  {
+    "timestamp": "2025-07-01T08:00:00",
+    "total_price": 860105657,
+    "item_count": 280,
+    "average_price": 3071805,
+    "original_points": 560
+  },
+  {
+    "timestamp": "2025-07-01T11:00:00",
+    "total_price": 858228683,
+    "item_count": 280,
+    "average_price": 3065102,
+    "original_points": 280
+  },
+  {
+    "timestamp": "2025-07-01T12:00:00",
+    "total_price": 849242718,
+    "item_count": 280,
+    "average_price": 3033009,
+    "original_points": 280
+  },
+  {
+    "timestamp": "2025-07-01T13:00:00",
+    "total_price": 847901792,
+    "item_count": 280,
+    "average_price": 3028220,
+    "original_points": 280
+  },
+  {
+    "timestamp": "2025-07-01T14:00:00",
+    "total_price": 846977410,
+    "item_count": 280,
+    "average_price": 3024919,
+    "original_points": 560
+  },
+  {
+    "timestamp": "2025-07-01T15:00:00",
+    "total_price": 845664872,
+    "item_count": 280,
+    "average_price": 3020231,
+    "original_points": 280
+  },
+  {
+    "timestamp": "2025-07-01T16:00:00",
+    "total_price": 847058797,
+    "item_count": 280,
+    "average_price": 3025209,
+    "original_points": 560
+  },
+  {
+    "timestamp": "2025-07-01T17:00:00",
+    "total_price": 846919790,
+    "item_count": 280,
+    "average_price": 3024713,
+    "original_points": 280
+  },
+  {
+    "timestamp": "2025-07-01T18:00:00",
+    "total_price": 847146926,
+    "item_count": 280,
+    "average_price": 3025524,
+    "original_points": 560
+  },
+  {
+    "timestamp": "2025-07-01T19:00:00",
+    "total_price": 847801055,
+    "item_count": 280,
+    "average_price": 3027860,
+    "original_points": 560
+  },
+  {
+    "timestamp": "2025-07-01T20:00:00",
+    "total_price": 847253811,
+    "item_count": 280,
+    "average_price": 3025906,
+    "original_points": 560
+  },
+  {
+    "timestamp": "2025-07-01T22:00:00",
+    "total_price": 845694486,
+    "item_count": 280,
+    "average_price": 3020337,
+    "original_points": 560
+  },
+  {
+    "timestamp": "2025-07-01T23:00:00",
+    "total_price": 852328270,
+    "item_count": 280,
+    "average_price": 3044029,
+    "original_points": 560
+  },
+  {
+    "timestamp": "2025-07-02T00:00:00",
+    "total_price": 858887210,
+    "item_count": 280,
+    "average_price": 3067454,
+    "original_points": 560
+  },
+  {
+    "timestamp": "2025-07-02T01:00:00",
+    "total_price": 861550990,
+    "item_count": 280,
+    "average_price": 3076967,
+    "original_points": 280
+  },
+  {
+    "timestamp": "2025-07-02T02:00:00",
+    "total_price": 864684079,
+    "item_count": 280,
+    "average_price": 3088157,
+    "original_points": 840
+  },
+  {
+    "timestamp": "2025-07-02T03:00:00",
+    "total_price": 863867301,
+    "item_count": 280,
+    "average_price": 3085240,
+    "original_points": 280
+  },
+  {
+    "timestamp": "2025-07-02T04:00:00",
+    "total_price": 861574484,
+    "item_count": 280,
+    "average_price": 3077051,
+    "original_points": 560
+  },
+  {
+    "timestamp": "2025-07-02T05:00:00",
+    "total_price": 861987799,
+    "item_count": 280,
+    "average_price": 3078527,
+    "original_points": 560
+  },
+  {
+    "timestamp": "2025-07-02T06:00:00",
+    "total_price": 866568379,
+    "item_count": 280,
+    "average_price": 3094887,
+    "original_points": 560
+  },
+  {
+    "timestamp": "2025-07-02T07:00:00",
+    "total_price": 872091155,
+    "item_count": 280,
+    "average_price": 3114611,
+    "original_points": 560
+  },
+  {
+    "timestamp": "2025-07-02T08:00:00",
+    "total_price": 860811401,
+    "item_count": 280,
+    "average_price": 3074326,
+    "original_points": 560
+  },
+  {
+    "timestamp": "2025-07-02T11:00:00",
+    "total_price": 855644762,
+    "item_count": 280,
+    "average_price": 3055874,
+    "original_points": 280
+  },
+  {
+    "timestamp": "2025-07-02T12:00:00",
+    "total_price": 852081144,
+    "item_count": 280,
+    "average_price": 3043146,
+    "original_points": 280
+  },
+  {
+    "timestamp": "2025-07-02T13:00:00",
+    "total_price": 850517394,
+    "item_count": 280,
+    "average_price": 3037562,
+    "original_points": 280
+  },
+  {
+    "timestamp": "2025-07-02T14:00:00",
+    "total_price": 849930970,
+    "item_count": 280,
+    "average_price": 3035467,
+    "original_points": 840
+  },
+  {
+    "timestamp": "2025-07-02T15:00:00",
+    "total_price": 852076039,
+    "item_count": 280,
+    "average_price": 3043128,
+    "original_points": 280
+  },
+  {
+    "timestamp": "2025-07-02T16:00:00",
+    "total_price": 846846659,
+    "item_count": 280,
+    "average_price": 3024452,
+    "original_points": 560
+  },
+  {
+    "timestamp": "2025-07-02T17:00:00",
+    "total_price": 855427643,
+    "item_count": 280,
+    "average_price": 3055098,
+    "original_points": 280
+  },
+  {
+    "timestamp": "2025-07-02T18:00:00",
+    "total_price": 858279092,
+    "item_count": 280,
+    "average_price": 3065282,
+    "original_points": 560
+  },
+  {
+    "timestamp": "2025-07-02T19:00:00",
+    "total_price": 856927719,
+    "item_count": 280,
+    "average_price": 3060456,
+    "original_points": 560
+  },
+  {
+    "timestamp": "2025-07-02T20:00:00",
+    "total_price": 856650060,
+    "item_count": 280,
+    "average_price": 3059464,
+    "original_points": 560
+  },
+  {
+    "timestamp": "2025-07-02T21:00:00",
+    "total_price": 859587008,
+    "item_count": 280,
+    "average_price": 3069953,
+    "original_points": 280
+  },
+  {
+    "timestamp": "2025-07-02T22:00:00",
+    "total_price": 862737084,
+    "item_count": 280,
+    "average_price": 3081203,
+    "original_points": 280
+  },
+  {
+    "timestamp": "2025-07-02T23:00:00",
+    "total_price": 860316114,
+    "item_count": 280,
+    "average_price": 3072557,
+    "original_points": 560
+  },
+  {
+    "timestamp": "2025-07-03T00:00:00",
+    "total_price": 861544827,
+    "item_count": 280,
+    "average_price": 3076945,
+    "original_points": 560
+  },
+  {
+    "timestamp": "2025-07-03T01:00:00",
+    "total_price": 861255578,
+    "item_count": 280,
+    "average_price": 3075912,
+    "original_points": 280
+  },
+  {
+    "timestamp": "2025-07-03T02:00:00",
+    "total_price": 865245520,
+    "item_count": 280,
+    "average_price": 3090162,
+    "original_points": 840
+  },
+  {
+    "timestamp": "2025-07-03T03:00:00",
+    "total_price": 865471947,
+    "item_count": 280,
+    "average_price": 3090971,
+    "original_points": 280
+  },
+  {
+    "timestamp": "2025-07-03T04:00:00",
+    "total_price": 868825863,
+    "item_count": 280,
+    "average_price": 3102949,
+    "original_points": 560
+  },
+  {
+    "timestamp": "2025-07-03T05:00:00",
+    "total_price": 866061360,
+    "item_count": 280,
+    "average_price": 3093076,
+    "original_points": 560
+  },
+  {
+    "timestamp": "2025-07-03T06:00:00",
+    "total_price": 864768126,
+    "item_count": 280,
+    "average_price": 3088457,
+    "original_points": 560
+  },
+  {
+    "timestamp": "2025-07-03T07:00:00",
+    "total_price": 864242840,
+    "item_count": 280,
+    "average_price": 3086581,
+    "original_points": 560
+  },
+  {
     "timestamp": "2025-07-03T08:00:00",
     "total_price": 864021375,
     "item_count": 280,
@@ -334,5 +691,12 @@
     "item_count": 280,
     "average_price": 2944369,
     "original_points": 560
+  },
+  {
+    "timestamp": "2025-07-05T14:00:00",
+    "total_price": 825355587,
+    "item_count": 280,
+    "average_price": 2947698,
+    "original_points": 280
   }
 ]
