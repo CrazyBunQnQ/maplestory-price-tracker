@@ -21,7 +21,7 @@ class HistoricalPriceTracker:
         
         # 緩和版設定: より積極的なデータ蓄積
         self.relaxed_mode = os.getenv('RELAXED_MODE', 'true').lower() == 'true'
-        self.time_threshold_ratio = float(os.getenv('TIME_THRESHOLD_RATIO', '0.7'))  # 70%経過で更新
+        self.time_threshold_ratio = float(os.getenv('TIME_THRESHOLD_RATIO', '0.9'))  # 70%経過で更新
         
         # ディレクトリ作成
         os.makedirs(history_dir, exist_ok=True)
