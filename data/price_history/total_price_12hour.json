@@ -1,46 +1,30 @@
 {
   "labels": [
-    "07/08 12:00",
-    "07/09 00:00",
-    "07/09 12:00",
-    "07/10 00:00",
-    "07/10 12:00"
+    "07/10 16:34"
   ],
   "datasets": [
     {
       "label": "総価格 (1ヶ月分（12時間毎）)",
       "data": [
-        802843716,
-        801647546,
-        781647613,
-        710665908,
-        699591217
+        695331087
       ],
       "borderColor": "#e74c3c",
       "backgroundColor": "rgba(231, 76, 60, 0.1)",
-      "borderWidth": 2,
+      "borderWidth": 3,
       "fill": true,
-      "tension": 0.4,
-      "pointRadius": 2,
-      "pointHoverRadius": 4,
+      "tension": 0.3,
       "yAxisID": "y"
     },
     {
       "label": "平均価格 (1ヶ月分（12時間毎）)",
       "data": [
-        2867298,
-        2863026,
-        2791598,
-        2538092,
-        2498540
+        2483325
       ],
       "borderColor": "#3498db",
       "backgroundColor": "rgba(52, 152, 219, 0.1)",
       "borderWidth": 2,
       "fill": false,
-      "tension": 0.4,
-      "pointRadius": 1,
-      "pointHoverRadius": 3,
+      "tension": 0.3,
       "yAxisID": "y1"
     }
   ]
