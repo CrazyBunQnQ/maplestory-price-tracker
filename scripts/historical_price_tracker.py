@@ -3,8 +3,9 @@ import json
 import time
 import os
 from datetime import datetime, timedelta
-from collections import deque
+from collections import deque, defaultdict
 import logging
+import statistics
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -26,27 +27,42 @@ class HistoricalPriceTracker:
         # ディレクトリ作成
         os.makedirs(history_dir, exist_ok=True)
         
-        # 修正された時間間隔とデータ保持期間
+        # 修正: 30分毎データ収集と時間間隔別集約設定
+        self.raw_data_interval = timedelta(minutes=30)  # 30分毎の生データ
+        
+        # チャート用時間間隔設定（30分毎データから集約）
         self.price_intervals = {
             '1hour': {
                 'interval': timedelta(hours=1),
                 'maxlen': 168,  # 1週間分（168時間）
-                'description': '1週間分（1時間毎）'
+                'description': '1週間分（1時間毎）',
+                'aggregation_points': 2  # 30分×2 = 1時間
             },
             '12hour': {
                 'interval': timedelta(hours=12),
                 'maxlen': 60,   # 1ヶ月分（60回 = 30日）
-                'description': '1ヶ月分（12時間毎）'
+                'description': '1ヶ月分（12時間毎）',
+                'aggregation_points': 24  # 30分×24 = 12時間
             },
             '1day': {
                 'interval': timedelta(days=1),
                 'maxlen': 365,  # 1年分（365日）
-                'description': '1年分（1日毎）'
+                'description': '1年分（1日毎）',
+                'aggregation_points': 48  # 30分×48 = 24時間
             }
         }
         
-        # 各アイテムの価格履歴を管理するディクショナリ（個別アイテムのみ）
+        # 30分毎の生データ保存用（個別アイテム）
+        self.raw_price_data = {}
+        
+        # 集約された価格履歴（個別アイテム）
         self.price_history = {}
+        
+        # 総価格データ（30分毎の生データ）
+        self.total_price_raw_data = deque(maxlen=2880)  # 30日分の30分毎データ
+        
+        # 総価格履歴（集約済み）
+        self.total_price_history = {}
         
         # 現在の価格を記録するためのキャッシュ
         self.current_prices = {}
@@ -59,19 +75,51 @@ class HistoricalPriceTracker:
             'first_time_updates': 0
         }
         
-        logger.info("🔧 価格履歴追跡システム（緩和版）初期化")
+        logger.info("🔧 価格履歴追跡システム（30分毎データ集約版）初期化")
         logger.info(f"🔄 強制価格検出: {'有効' if self.force_price_detection else '無効'}")
         logger.info(f"⚡ 緩和モード: {'有効' if self.relaxed_mode else '無効'}")
         logger.info(f"⏰ 時間閾値: {self.time_threshold_ratio*100:.0f}%経過で更新")
+        logger.info(f"📊 データ収集間隔: 30分毎")
         
         self.load_existing_history()
 
     def load_existing_history(self):
-        """既存の価格履歴を読み込み（個別アイテムのみ）"""
+        """既存の価格履歴を読み込み（30分毎データと集約データ）"""
+        try:
+            # 30分毎の生データを読み込み
+            self.load_raw_data()
+            
+            # 集約済みデータを読み込み
+            self.load_aggregated_data()
+            
+            # 総価格データを読み込み
+            self.load_total_price_data()
+            
+        except Exception as e:
+            logger.error(f"価格履歴読み込みエラー: {e}")
+
+    def load_raw_data(self):
+        """30分毎の生データを読み込み"""
+        try:
+            raw_data_file = os.path.join(self.history_dir, "raw_price_data.json")
+            if os.path.exists(raw_data_file):
+                with open(raw_data_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    
+                for item_id, raw_history in data.items():
+                    self.raw_price_data[item_id] = deque(
+                        raw_history, 
+                        maxlen=2880  # 30日分の30分毎データ
+                    )
+                    
+                logger.info(f"30分毎生データ読み込み: {len(self.raw_price_data)}アイテム")
+        except Exception as e:
+            logger.warning(f"30分毎生データ読み込みエラー: {e}")
+
+    def load_aggregated_data(self):
+        """集約済みデータを読み込み"""
         try:
             total_records = 0
-            oldest_record = None
-            newest_record = None
             
             for interval_type in self.price_intervals:
                 history_file = os.path.join(self.history_dir, f"history_{interval_type}.json")
@@ -89,37 +137,72 @@ class HistoricalPriceTracker:
                                 maxlen=self.price_intervals[interval_type]['maxlen']
                             )
                             total_records += len(history)
-                            
-                            # 最古・最新記録の追跡
-                            for record in history:
-                                timestamp = record.get('timestamp')
-                                if timestamp:
-                                    if oldest_record is None or timestamp < oldest_record:
-                                        oldest_record = timestamp
-                                    if newest_record is None or timestamp > newest_record:
-                                        newest_record = timestamp
                         
-                        logger.info(f"{interval_type} 履歴ファイル読み込み: {item_count}アイテム")
+                        logger.info(f"{interval_type} 集約履歴読み込み: {item_count}アイテム")
             
-            logger.info(f"個別アイテム価格履歴読み込み完了: {len(self.price_history)}アイテム、{total_records}レコード")
-            
-            if oldest_record and newest_record:
-                try:
-                    oldest_dt = datetime.fromisoformat(oldest_record.replace('Z', '+00:00'))
-                    newest_dt = datetime.fromisoformat(newest_record.replace('Z', '+00:00'))
-                    data_span = newest_dt - oldest_dt
-                    logger.info(f"データ蓄積期間: {data_span.days}日 {data_span.seconds//3600}時間")
-                except Exception as e:
-                    logger.debug(f"データ期間計算エラー: {e}")
-            
-            if self.force_price_detection:
-                logger.info("🔄 強制価格検出モードが有効です")
+            logger.info(f"個別アイテム集約履歴読み込み完了: {len(self.price_history)}アイテム、{total_records}レコード")
             
         except Exception as e:
-            logger.error(f"価格履歴読み込みエラー: {e}")
+            logger.warning(f"集約データ読み込みエラー: {e}")
+
+    def load_total_price_data(self):
+        """総価格データを読み込み"""
+        try:
+            # 30分毎の総価格生データ
+            total_raw_file = os.path.join(self.history_dir, "total_price_raw_data.json")
+            if os.path.exists(total_raw_file):
+                with open(total_raw_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    self.total_price_raw_data = deque(data, maxlen=2880)
+                    logger.info(f"総価格30分毎データ読み込み: {len(self.total_price_raw_data)}レコード")
+            
+            # 集約済み総価格データ
+            for interval_type in self.price_intervals:
+                total_file = os.path.join(self.history_dir, f"total_price_{interval_type}.json")
+                if os.path.exists(total_file):
+                    with open(total_file, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                        if interval_type not in self.total_price_history:
+                            self.total_price_history[interval_type] = data
+                        logger.info(f"総価格{interval_type}データ読み込み完了")
+                        
+        except Exception as e:
+            logger.warning(f"総価格データ読み込みエラー: {e}")
 
     def save_history_to_files(self):
-        """価格履歴を間隔別ファイルに保存（個別アイテムのみ）"""
+        """価格履歴を全ファイルに保存（30分毎生データ + 集約データ + 総価格データ）"""
+        try:
+            # 30分毎生データの保存
+            self.save_raw_data()
+            
+            # 集約データの保存
+            self.save_aggregated_data()
+            
+            # 総価格データの保存
+            self.save_total_price_data()
+            
+        except Exception as e:
+            logger.error(f"価格履歴保存エラー: {e}")
+
+    def save_raw_data(self):
+        """30分毎の生データを保存"""
+        try:
+            raw_data_file = os.path.join(self.history_dir, "raw_price_data.json")
+            raw_data = {}
+            
+            for item_id, raw_history in self.raw_price_data.items():
+                if len(raw_history) > 0:
+                    raw_data[item_id] = list(raw_history)
+            
+            with open(raw_data_file, 'w', encoding='utf-8') as f:
+                json.dump(raw_data, f, ensure_ascii=False, indent=2)
+                
+            logger.info(f"30分毎生データ保存: {len(raw_data)}アイテム")
+        except Exception as e:
+            logger.error(f"30分毎生データ保存エラー: {e}")
+
+    def save_aggregated_data(self):
+        """集約データを保存"""
         try:
             for interval_type in self.price_intervals:
                 history_file = os.path.join(self.history_dir, f"history_{interval_type}.json")
@@ -136,71 +219,253 @@ class HistoricalPriceTracker:
                 with open(history_file, 'w', encoding='utf-8') as f:
                     json.dump(interval_data, f, ensure_ascii=False, indent=2)
                 
-                logger.info(f"{interval_type} 個別履歴保存完了: {len(interval_data)}アイテム、{total_points}ポイント")
+                logger.info(f"{interval_type} 集約履歴保存: {len(interval_data)}アイテム、{total_points}ポイント")
         except Exception as e:
-            logger.error(f"価格履歴保存エラー: {e}")
+            logger.error(f"集約データ保存エラー: {e}")
+
+    def save_total_price_data(self):
+        """総価格データを保存"""
+        try:
+            # 30分毎の総価格生データ
+            total_raw_file = os.path.join(self.history_dir, "total_price_raw_data.json")
+            with open(total_raw_file, 'w', encoding='utf-8') as f:
+                json.dump(list(self.total_price_raw_data), f, ensure_ascii=False, indent=2)
+            
+            # 集約済み総価格データ
+            for interval_type in self.price_intervals:
+                if interval_type in self.total_price_history:
+                    total_file = os.path.join(self.history_dir, f"total_price_{interval_type}.json")
+                    with open(total_file, 'w', encoding='utf-8') as f:
+                        json.dump(self.total_price_history[interval_type], f, ensure_ascii=False, indent=2)
+                    
+            logger.info("総価格データ保存完了")
+        except Exception as e:
+            logger.error(f"総価格データ保存エラー: {e}")
+
+    def add_raw_price_data(self, item_id, item_name, current_price):
+        """30分毎の生データを追加"""
+        timestamp = datetime.now().isoformat()
+        price_point = {
+            'timestamp': timestamp,
+            'price': current_price,
+            'item_name': item_name
+        }
+        
+        if item_id not in self.raw_price_data:
+            self.raw_price_data[item_id] = deque(maxlen=2880)
+        
+        self.raw_price_data[item_id].append(price_point)
+        logger.debug(f"30分毎データ追加: {item_name} - {current_price:,}")
+
+    def aggregate_price_data_for_interval(self, item_id, interval_type):
+        """30分毎データから指定間隔で集約"""
+        if item_id not in self.raw_price_data:
+            return []
+        
+        raw_data = list(self.raw_price_data[item_id])
+        if not raw_data:
+            return []
+        
+        config = self.price_intervals[interval_type]
+        interval_duration = config['interval']
+        
+        aggregated_data = []
+        current_group = []
+        group_start_time = None
+        
+        for data_point in raw_data:
+            try:
+                point_time = datetime.fromisoformat(data_point['timestamp'].replace('Z', '+00:00'))
+                
+                if group_start_time is None:
+                    group_start_time = point_time
+                    current_group = [data_point]
+                elif point_time - group_start_time < interval_duration:
+                    current_group.append(data_point)
+                else:
+                    # 現在のグループを集約
+                    if current_group:
+                        avg_price = statistics.mean([p['price'] for p in current_group])
+                        aggregated_data.append({
+                            'timestamp': current_group[-1]['timestamp'],  # 最新のタイムスタンプを使用
+                            'price': int(avg_price),
+                            'item_name': current_group[0]['item_name'],
+                            'data_points': len(current_group)
+                        })
+                    
+                    # 新しいグループを開始
+                    group_start_time = point_time
+                    current_group = [data_point]
+                    
+            except Exception as e:
+                logger.debug(f"データポイント処理エラー: {e}")
+                continue
+        
+        # 最後のグループを処理
+        if current_group:
+            avg_price = statistics.mean([p['price'] for p in current_group])
+            aggregated_data.append({
+                'timestamp': current_group[-1]['timestamp'],
+                'price': int(avg_price),
+                'item_name': current_group[0]['item_name'],
+                'data_points': len(current_group)
+            })
+        
+        return aggregated_data
+
+    def update_total_price_data(self, all_current_prices):
+        """総価格データを更新（30分毎 + 集約）"""
+        timestamp = datetime.now().isoformat()
+        
+        # 有効な価格のみを計算
+        valid_prices = [price for price in all_current_prices.values() if price > 0]
+        
+        if not valid_prices:
+            logger.warning("有効な価格データがありません")
+            return
+        
+        total_price = sum(valid_prices)
+        average_price = int(statistics.mean(valid_prices))
+        
+        # 30分毎の総価格データを追加
+        total_point = {
+            'timestamp': timestamp,
+            'total_price': total_price,
+            'average_price': average_price,
+            'item_count': len(valid_prices)
+        }
+        
+        self.total_price_raw_data.append(total_point)
+        
+        # 各間隔での集約済み総価格データを更新
+        for interval_type in self.price_intervals:
+            self.aggregate_total_price_for_interval(interval_type)
+        
+        logger.info(f"総価格データ更新: 合計{total_price:,} NESO, 平均{average_price:,} NESO ({len(valid_prices)}アイテム)")
+
+    def aggregate_total_price_for_interval(self, interval_type):
+        """総価格データを指定間隔で集約"""
+        if not self.total_price_raw_data:
+            return
+        
+        config = self.price_intervals[interval_type]
+        interval_duration = config['interval']
+        
+        raw_data = list(self.total_price_raw_data)
+        aggregated_data = []
+        current_group = []
+        group_start_time = None
+        
+        for data_point in raw_data:
+            try:
+                point_time = datetime.fromisoformat(data_point['timestamp'].replace('Z', '+00:00'))
+                
+                if group_start_time is None:
+                    group_start_time = point_time
+                    current_group = [data_point]
+                elif point_time - group_start_time < interval_duration:
+                    current_group.append(data_point)
+                else:
+                    # 現在のグループを集約
+                    if current_group:
+                        avg_total = int(statistics.mean([p['total_price'] for p in current_group]))
+                        avg_average = int(statistics.mean([p['average_price'] for p in current_group]))
+                        avg_count = int(statistics.mean([p['item_count'] for p in current_group]))
+                        
+                        aggregated_data.append({
+                            'timestamp': current_group[-1]['timestamp'],
+                            'total_price': avg_total,
+                            'average_price': avg_average,
+                            'item_count': avg_count,
+                            'data_points': len(current_group)
+                        })
+                    
+                    # 新しいグループを開始
+                    group_start_time = point_time
+                    current_group = [data_point]
+                    
+            except Exception as e:
+                logger.debug(f"総価格データポイント処理エラー: {e}")
+                continue
+        
+        # 最後のグループを処理
+        if current_group:
+            avg_total = int(statistics.mean([p['total_price'] for p in current_group]))
+            avg_average = int(statistics.mean([p['average_price'] for p in current_group]))
+            avg_count = int(statistics.mean([p['item_count'] for p in current_group]))
+            
+            aggregated_data.append({
+                'timestamp': current_group[-1]['timestamp'],
+                'total_price': avg_total,
+                'average_price': avg_average,
+                'item_count': avg_count,
+                'data_points': len(current_group)
+            })
+        
+        # Chart.js用のデータ形式で保存
+        chart_data = self.format_total_price_chart_data(aggregated_data, interval_type)
+        self.total_price_history[interval_type] = chart_data
+
+    def format_total_price_chart_data(self, aggregated_data, interval_type):
+        """総価格データをChart.js形式にフォーマット"""
+        if not aggregated_data:
+            return {"labels": [], "datasets": []}
+        
+        # 時刻フォーマットを間隔に応じて調整
+        def format_time(timestamp_str):
+            try:
+                timestamp = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+                if interval_type == '1hour':
+                    return timestamp.strftime('%m/%d %H:%M')
+                elif interval_type == '12hour':
+                    return timestamp.strftime('%m/%d %H:%M')
+                else:  # 1day
+                    return timestamp.strftime('%m/%d')
+            except:
+                return timestamp_str
+        
+        labels = [format_time(point['timestamp']) for point in aggregated_data]
+        total_prices = [point['total_price'] for point in aggregated_data]
+        average_prices = [point['average_price'] for point in aggregated_data]
+        
+        config = self.price_intervals[interval_type]
+        
+        return {
+            'labels': labels,
+            'datasets': [
+                {
+                    'label': f'総価格 ({config["description"]})',
+                    'data': total_prices,
+                    'borderColor': '#e74c3c',
+                    'backgroundColor': 'rgba(231, 76, 60, 0.1)',
+                    'borderWidth': 3,
+                    'fill': True,
+                    'tension': 0.3,
+                    'yAxisID': 'y'
+                },
+                {
+                    'label': f'平均価格 ({config["description"]})',
+                    'data': average_prices,
+                    'borderColor': '#3498db',
+                    'backgroundColor': 'rgba(52, 152, 219, 0.1)',
+                    'borderWidth': 2,
+                    'fill': False,
+                    'tension': 0.3,
+                    'yAxisID': 'y1'
+                }
+            ]
+        }
 
     def should_update_interval(self, item_id, interval_type, current_price):
-        """緩和版: より積極的な更新判定（関数名は維持）"""
+        """緩和版: より積極的な更新判定（30分毎データ対応）"""
         
         # 強制検出モードの場合は無条件更新
         if self.force_price_detection:
             self.update_statistics['forced_updates'] += 1
             return True
         
-        # 初回データの場合
-        if item_id not in self.price_history:
-            self.update_statistics['first_time_updates'] += 1
-            return True
-        
-        if interval_type not in self.price_history[item_id]:
-            self.update_statistics['first_time_updates'] += 1
-            return True
-        
-        history = self.price_history[item_id][interval_type]
-        if not history:
-            self.update_statistics['first_time_updates'] += 1
-            return True
-        
-        last_entry = history[-1]
-        last_time = datetime.fromisoformat(last_entry['timestamp'].replace('Z', '+00:00'))
-        last_price = last_entry.get('price', 0)
-        now = datetime.now()
-        
-        required_interval = self.price_intervals[interval_type]['interval']
-        
-        # 緩和版: 時間閾値を70%に設定（より頻繁な更新）
-        time_threshold = required_interval.total_seconds() * self.time_threshold_ratio
-        elapsed_seconds = (now - last_time).total_seconds()
-        time_condition = elapsed_seconds >= time_threshold
-        
-        # **重要な修正**: 価格変更も検出対象に追加
-        price_changed = current_price != last_price and current_price > 0
-        
-        # 緩和モードでは時間条件を優先
-        if self.relaxed_mode:
-            if time_condition:
-                self.update_statistics['time_based_updates'] += 1
-                elapsed_hours = elapsed_seconds / 3600
-                logger.debug(f"時間経過更新 {item_id} ({interval_type}): {elapsed_hours:.1f}h >= {time_threshold/3600:.1f}h")
-                return True
-            elif price_changed:
-                self.update_statistics['price_change_updates'] += 1
-                logger.info(f"価格変更検出 {item_id} ({interval_type}): {last_price:,} -> {current_price:,}")
-                return True
-        else:
-            # 従来の条件（時間経過 OR 価格変更）
-            should_update = time_condition or price_changed
-            
-            if should_update and price_changed:
-                self.update_statistics['price_change_updates'] += 1
-                logger.info(f"価格変更検出 {item_id} ({interval_type}): {last_price:,} -> {current_price:,}")
-            elif should_update:
-                self.update_statistics['time_based_updates'] += 1
-                
-            return should_update
-        
-        return False
+        # 30分毎の生データは常に追加
+        return True
 
     def detect_price_changes_from_last_updated(self, item_data):
         """last_updatedフィールドによる最近の更新検出（緩和版）"""
@@ -228,38 +493,42 @@ class HistoricalPriceTracker:
             return False
 
     def update_price_history(self, item_id, item_name, current_price):
-        """価格履歴を更新（緩和版・関数名維持）"""
-        timestamp = datetime.now().isoformat()
-        price_point = {
-            'timestamp': timestamp,
-            'price': current_price,
-            'item_name': item_name
-        }
-        
-        # アイテム初期化
-        if item_id not in self.price_history:
-            self.price_history[item_id] = {}
+        """価格履歴を更新（30分毎データ + 集約処理）"""
+        # 30分毎の生データを追加
+        self.add_raw_price_data(item_id, item_name, current_price)
         
         # 現在価格をキャッシュに保存
         self.current_prices[item_id] = current_price
         
-        # 各間隔での更新判定と追加（緩和版）
+        # 各間隔での集約データを更新
         updated_intervals = []
-        for interval_type, config in self.price_intervals.items():
-            if self.should_update_interval(item_id, interval_type, current_price):
+        for interval_type in self.price_intervals:
+            aggregated_data = self.aggregate_price_data_for_interval(item_id, interval_type)
+            
+            if aggregated_data:
+                if item_id not in self.price_history:
+                    self.price_history[item_id] = {}
+                
                 if interval_type not in self.price_history[item_id]:
+                    config = self.price_intervals[interval_type]
                     self.price_history[item_id][interval_type] = deque(maxlen=config['maxlen'])
                 
-                self.price_history[item_id][interval_type].append(price_point)
-                updated_intervals.append(interval_type)
+                # 最新の集約データのみを追加（重複を避けるため）
+                latest_data = aggregated_data[-1]
+                
+                # 重複チェック
+                current_history = list(self.price_history[item_id][interval_type])
+                if not current_history or current_history[-1]['timestamp'] != latest_data['timestamp']:
+                    self.price_history[item_id][interval_type].append(latest_data)
+                    updated_intervals.append(interval_type)
         
         if updated_intervals:
-            logger.info(f"{item_name} 価格履歴更新: {updated_intervals}")
+            logger.debug(f"{item_name} 集約履歴更新: {updated_intervals}")
         
         return updated_intervals
 
     def update_from_current_prices(self):
-        """現在の価格JSONから履歴を更新（緩和版・関数名維持）"""
+        """現在の価格JSONから履歴を更新（30分毎データ対応版）"""
         try:
             if not os.path.exists(self.json_file_path):
                 logger.error(f"価格ファイルが見つかりません: {self.json_file_path}")
@@ -283,6 +552,7 @@ class HistoricalPriceTracker:
             processed_count = 0
             force_updated_count = 0
             recent_update_count = 0
+            all_current_prices = {}
             
             for item_id, item_data in current_data.items():
                 processed_count += 1
@@ -304,31 +574,29 @@ class HistoricalPriceTracker:
                 try:
                     current_price = int(price_str)
                     if current_price > 0:
-                        # 強制検出モードまたは最近の更新の場合は無条件で更新
-                        if self.force_price_detection or is_recent_update:
+                        all_current_prices[item_id] = current_price
+                        
+                        # 30分毎のデータ更新（常に実行）
+                        intervals = self.update_price_history(
+                            item_id, 
+                            item_data['item_name'], 
+                            current_price
+                        )
+                        
+                        if intervals or self.force_price_detection:
+                            updated_count += 1
                             if self.force_price_detection:
                                 force_updated_count += 1
-                            
-                            intervals = self.update_price_history(
-                                item_id, 
-                                item_data['item_name'], 
-                                current_price
-                            )
-                        else:
-                            intervals = self.update_price_history(
-                                item_id, 
-                                item_data['item_name'], 
-                                current_price
-                            )
-                        
-                        if intervals:
-                            updated_count += 1
                             
                 except (ValueError, TypeError) as e:
                     logger.debug(f"価格変換エラー ({item_id}): {price_str} -> {e}")
                     continue
             
-            logger.info(f"個別アイテム処理完了: 処理{processed_count}件、更新{updated_count}件")
+            # 総価格データを更新
+            if all_current_prices:
+                self.update_total_price_data(all_current_prices)
+            
+            logger.info(f"30分毎データ処理完了: 処理{processed_count}件、更新{updated_count}件")
             
             # 緩和版統計表示
             logger.info(f"更新理由別統計:")
@@ -344,7 +612,7 @@ class HistoricalPriceTracker:
             
             if updated_count > 0:
                 self.save_history_to_files()
-                logger.info(f"✅ 個別価格履歴更新完了: {updated_count}アイテム")
+                logger.info(f"✅ 30分毎データ + 集約履歴更新完了: {updated_count}アイテム")
             else:
                 if not self.force_price_detection and not self.relaxed_mode:
                     logger.info("💡 価格変更が検出されませんでした（FORCE_PRICE_DETECTION=true を試してください）")
@@ -364,7 +632,7 @@ class HistoricalPriceTracker:
             return 0
 
     def generate_chart_data(self, item_id, interval='1hour'):
-        """Chart.js用のデータを生成（デフォルトは1hour/1週間分）"""
+        """Chart.js用のデータを生成（30分毎データから集約）"""
         if item_id not in self.price_history:
             return None
         
@@ -418,13 +686,21 @@ class HistoricalPriceTracker:
 
     def get_statistics(self):
         """履歴統計情報を取得"""
+        # 30分毎生データの統計
+        raw_data_count = len(self.raw_price_data)
+        total_raw_points = sum(len(data) for data in self.raw_price_data.values())
+        
         stats = {
             'total_items': len(self.price_history),
+            'raw_data_items': raw_data_count,
+            'total_raw_data_points': total_raw_points,
+            'total_price_raw_points': len(self.total_price_raw_data),
             'intervals': {},
             'configuration': {
                 'force_price_detection': self.force_price_detection,
                 'relaxed_mode': self.relaxed_mode,
-                'time_threshold_ratio': self.time_threshold_ratio
+                'time_threshold_ratio': self.time_threshold_ratio,
+                'data_collection_interval': '30分毎'
             }
         }
         
@@ -439,20 +715,21 @@ class HistoricalPriceTracker:
                 'total_data_points': total_points,
                 'description': config['description'],
                 'max_points': config['maxlen'],
-                'average_points_per_item': total_points / max(item_count, 1)
+                'average_points_per_item': total_points / max(item_count, 1),
+                'aggregation_from': f"30分毎データから{config['aggregation_points']}ポイント平均"
             }
         
         return stats
 
 def main():
-    """メイン実行：現在の価格から履歴を更新（緩和版）"""
+    """メイン実行：30分毎データ収集と集約処理"""
     logger.info("=" * 50)
-    logger.info("MapleStory個別アイテム価格履歴更新開始（緩和版）")
+    logger.info("MapleStory価格履歴更新開始（30分毎データ集約版）")
     logger.info("=" * 50)
     
     try:
         # システム初期化
-        logger.info("個別アイテム価格追跡システム初期化: data/price_history")
+        logger.info("30分毎データ集約システム初期化: data/price_history")
         tracker = HistoricalPriceTracker()
         
         # 現在の価格データから履歴更新
@@ -460,18 +737,22 @@ def main():
         
         # 統計表示
         stats = tracker.get_statistics()
-        logger.info(f"📊 個別アイテム価格履歴統計:")
+        logger.info(f"📊 30分毎データ集約統計:")
         logger.info(f"  総アイテム数: {stats['total_items']}")
+        logger.info(f"  30分毎生データ: {stats['raw_data_items']}アイテム、{stats['total_raw_data_points']}ポイント")
+        logger.info(f"  総価格30分毎データ: {stats['total_price_raw_points']}ポイント")
         logger.info(f"  設定: 強制検出={stats['configuration']['force_price_detection']}, 緩和モード={stats['configuration']['relaxed_mode']}")
+        
         for interval, data in stats['intervals'].items():
             logger.info(f"  {interval}: {data['items_with_data']}件 ({data['description']}) - {data['total_data_points']}ポイント")
+            logger.info(f"    集約方法: {data['aggregation_from']}")
         
         # 緩和版結果表示
         if tracker.force_price_detection or tracker.relaxed_mode:
-            logger.info(f"🔄 緩和版モード結果: {updated}アイテム更新")
+            logger.info(f"🔄 30分毎データ集約結果: {updated}アイテム更新")
         
         logger.info("=" * 50)
-        logger.info(f"✅ 個別アイテム更新完了: {updated}アイテム")
+        logger.info(f"✅ 30分毎データ集約更新完了: {updated}アイテム")
         logger.info("=" * 50)
         
         return updated
