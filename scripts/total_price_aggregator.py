@@ -1,432 +1,421 @@
 #!/usr/bin/env python3
 import json
+import time
 import os
 from datetime import datetime, timedelta
-from collections import defaultdict
+from collections import deque
 import logging
+import statistics
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-class TimestampTotalAggregator:
-    def __init__(self, history_dir="data/price_history"):
+class TotalPriceAggregator:
+    def __init__(self, json_file_path="data/equipment_prices.json", 
+                 history_dir="data/price_history"):
+        self.json_file_path = json_file_path
         self.history_dir = history_dir
-        self.intervals = ['1hour', '12hour', '1day']
         
-        # 緩和版設定: より多くのデータポイントを表示
-        self.display_limits = {
-            '1hour': 168,     # 1週間分全て表示（48→168）
-            '12hour': 120,    # 2ヶ月分表示（60→120）
-            '1day': 90        # 3ヶ月分表示（30→90）
+        # 強制データリフレッシュ設定
+        self.force_data_refresh = os.getenv('FORCE_DATA_REFRESH', 'true').lower() == 'true'
+        self.force_rebuild_aggregation = os.getenv('FORCE_REBUILD_AGGREGATION', 'false').lower() == 'true'
+        
+        # ディレクトリ作成
+        os.makedirs(history_dir, exist_ok=True)
+        
+        # チャート用時間間隔設定（30分毎データから集約）
+        self.price_intervals = {
+            '1hour': {
+                'interval': timedelta(hours=1),
+                'maxlen': 168,  # 1週間分（168時間）
+                'description': '1週間分（1時間毎）'
+            },
+            '12hour': {
+                'interval': timedelta(hours=12),
+                'maxlen': 60,   # 1ヶ月分（60回 = 30日）
+                'description': '1ヶ月分（12時間毎）'
+            },
+            '1day': {
+                'interval': timedelta(days=1),
+                'maxlen': 365,  # 1年分（365日）
+                'description': '1年分（1日毎）'
+            }
         }
         
-        # 時間区切り設定
-        self.bucket_intervals = {
-            '1hour': timedelta(hours=1),      # 1時間区切り
-            '12hour': timedelta(hours=12),    # 12時間区切り
-            '1day': timedelta(days=1)         # 1日区切り
-        }
+        # 30分毎の総価格生データ
+        self.total_price_raw_data = deque(maxlen=2880)  # 30日分の30分毎データ
         
-        # 緩和版設定
-        self.force_aggregation = os.getenv('FORCE_AGGREGATION', 'true').lower() == 'true'
-        self.include_zero_prices = os.getenv('INCLUDE_ZERO_PRICES', 'false').lower() == 'true'
-        self.min_items_threshold = int(os.getenv('MIN_ITEMS_THRESHOLD', '1'))  # 最小アイテム数
+        # 集約済み総価格履歴
+        self.total_price_history = {}
         
-        logger.info("🔧 総価格集計システム（緩和版）初期化")
-        logger.info(f"🔄 強制集計: {'有効' if self.force_aggregation else '無効'}")
-        logger.info(f"💰 ゼロ価格含む: {'有効' if self.include_zero_prices else '無効'}")
-        logger.info(f"📊 最小アイテム数: {self.min_items_threshold}")
+        logger.info("🔧 総価格集約システム初期化（30分毎データ対応）")
+        logger.info(f"🔄 強制データリフレッシュ: {'有効' if self.force_data_refresh else '無効'}")
+        logger.info(f"🏗️ 強制リビルド: {'有効' if self.force_rebuild_aggregation else '無効'}")
         
-    def safe_parse_price(self, price_value):
-        """価格データを安全に解析（緩和版）"""
+        self.load_existing_data()
+
+    def load_existing_data(self):
+        """既存の総価格データを読み込み"""
         try:
-            if isinstance(price_value, (int, float)):
-                price = int(price_value)
-                # 緩和版: ゼロ価格も有効とする設定
-                return price if (price >= 0 and self.include_zero_prices) or price > 0 else 0
+            # 30分毎の総価格生データを読み込み
+            total_raw_file = os.path.join(self.history_dir, "total_price_raw_data.json")
+            if os.path.exists(total_raw_file) and not self.force_rebuild_aggregation:
+                with open(total_raw_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    self.total_price_raw_data = deque(data, maxlen=2880)
+                    logger.info(f"総価格30分毎データ読み込み: {len(self.total_price_raw_data)}レコード")
+            else:
+                logger.info("総価格30分毎データ: 新規作成または再構築")
             
-            if isinstance(price_value, str):
-                clean_price = price_value.replace(',', '').replace(' NESO', '').strip()
-                if clean_price in ['', '未取得', 'undefined', 'None', 'null']:
-                    return 0
-                
-                price = int(float(clean_price))
-                return price if (price >= 0 and self.include_zero_prices) or price > 0 else 0
-            
-            return 0
-            
-        except (ValueError, TypeError, AttributeError):
-            return 0
-    
-    def round_to_bucket(self, timestamp_str, interval):
-        """間隔に応じた時間区切りに丸める"""
-        try:
-            ts = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
-            bucket_interval = self.bucket_intervals[interval]
-            
-            if interval == '1hour':
-                # 1時間区切り
-                bucket_start = ts.replace(minute=0, second=0, microsecond=0)
-            elif interval == '12hour':
-                # 12時間区切り（0時または12時）
-                hour_bucket = (ts.hour // 12) * 12
-                bucket_start = ts.replace(hour=hour_bucket, minute=0, second=0, microsecond=0)
-            else:  # '1day'
-                # 1日区切り（0時）
-                bucket_start = ts.replace(hour=0, minute=0, second=0, microsecond=0)
-            
-            return bucket_start.isoformat()
+            # 集約済み総価格データを読み込み
+            for interval_type in self.price_intervals:
+                total_file = os.path.join(self.history_dir, f"total_price_{interval_type}.json")
+                if os.path.exists(total_file) and not self.force_rebuild_aggregation:
+                    with open(total_file, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                        self.total_price_history[interval_type] = data
+                        logger.info(f"総価格{interval_type}データ読み込み完了")
+                else:
+                    logger.info(f"総価格{interval_type}データ: 新規作成または再構築")
+                        
         except Exception as e:
-            logger.warn(f"時間丸めエラー: {timestamp_str} -> {e}")
-            return timestamp_str
-    
-    def aggregate_prices_per_bucket(self, item_data_points, interval):
-        """時間区切りに応じて価格を平均化（緩和版）"""
-        # 時間区切りにデータを集約
-        bucketed = defaultdict(list)
-        processed_count = 0
-        valid_count = 0
-        
-        for point in item_data_points:
-            processed_count += 1
-            
-            if not isinstance(point, dict) or 'timestamp' not in point or 'price' not in point:
-                continue
-            
-            bucket_time = self.round_to_bucket(point['timestamp'], interval)
-            price = self.safe_parse_price(point['price'])
-            
-            # 緩和版: ゼロ価格も条件次第で含める
-            if price > 0 or (price == 0 and self.include_zero_prices):
-                bucketed[bucket_time].append(price)
-                valid_count += 1
-        
-        # 各時間区切りの平均価格を計算
-        averaged_data = []
-        for bucket_time in sorted(bucketed.keys()):
-            prices = bucketed[bucket_time]
-            if prices:
-                avg_price = sum(prices) // len(prices)  # 整数平均
-                averaged_data.append({
-                    'timestamp': bucket_time,
-                    'price': avg_price,
-                    'original_count': len(prices)
-                })
-        
-        return averaged_data
-    
-    def limit_data_points(self, data_points, interval):
-        """表示最適化のためデータポイントを制限（緩和版）"""
-        limit = self.display_limits[interval]
-        
-        if len(data_points) <= limit:
-            return data_points
-        
-        # 最新のN個を取得
-        limited_data = data_points[-limit:]
-        logger.info(f"データポイント制限 {interval}: {len(data_points)} -> {len(limited_data)}ポイント")
-        
-        return limited_data
-    
-    def aggregate_by_timestamp(self, interval):
-        """指定間隔の履歴データを時間区切りで集計（緩和版）"""
-        history_file = os.path.join(self.history_dir, f"history_{interval}.json")
-        
-        if not os.path.exists(history_file):
-            logger.warn(f"履歴ファイルが見つかりません: {history_file}")
-            return []
-        
+            logger.warning(f"総価格データ読み込みエラー: {e}")
+
+    def collect_current_total_price(self):
+        """現在の総価格を収集して30分毎データに追加"""
         try:
-            with open(history_file, 'r', encoding='utf-8') as f:
-                all_items_data = json.load(f)
+            if not os.path.exists(self.json_file_path):
+                logger.error(f"価格ファイルが見つかりません: {self.json_file_path}")
+                return False
             
-            if not isinstance(all_items_data, dict):
-                logger.error(f"履歴データが辞書型ではありません: {type(all_items_data)}")
-                return []
+            with open(self.json_file_path, 'r', encoding='utf-8') as f:
+                current_data = json.load(f)
             
-            logger.info(f"履歴データ読み込み {interval}: {len(all_items_data)}アイテム")
-            
-            # 時間区切りの時間枠別に総価格を集計
-            timestamp_totals = defaultdict(lambda: {
-                'total_price': 0, 
-                'item_count': 0, 
-                'total_points': 0,
-                'valid_prices': [],
-                'zero_prices': 0
-            })
-            
-            processed_items = 0
-            total_averaged_points = 0
-            error_items = 0
-            
-            for item_id, item_history in all_items_data.items():
-                if not isinstance(item_history, list):
-                    error_items += 1
+            # 有効な価格を収集
+            valid_prices = []
+            for item_id, item_data in current_data.items():
+                if not item_data or not isinstance(item_data, dict):
+                    continue
+                    
+                if not item_data.get('item_price'):
                     continue
                 
-                processed_items += 1
-                
-                # アイテム毎に時間区切りで平均化
+                price_str = str(item_data['item_price']).replace(',', '').replace(' NESO', '').strip()
                 try:
-                    averaged_points = self.aggregate_prices_per_bucket(item_history, interval)
-                    total_averaged_points += len(averaged_points)
-                    
-                    # 平均化されたポイントを時間軸で合計
-                    for avg_point in averaged_points:
-                        bucket_time = avg_point['timestamp']
-                        avg_price = avg_point['price']
-                        original_count = avg_point['original_count']
-                        
-                        timestamp_totals[bucket_time]['total_price'] += avg_price
-                        timestamp_totals[bucket_time]['item_count'] += 1
-                        timestamp_totals[bucket_time]['total_points'] += original_count
-                        timestamp_totals[bucket_time]['valid_prices'].append(avg_price)
-                        
-                        if avg_price == 0:
-                            timestamp_totals[bucket_time]['zero_prices'] += 1
-                
-                except Exception as e:
-                    error_items += 1
-                    logger.debug(f"アイテム処理エラー {item_id}: {e}")
+                    current_price = int(price_str)
+                    if current_price > 0:
+                        valid_prices.append(current_price)
+                except (ValueError, TypeError):
+                    continue
             
-            logger.info(f"アイテム処理結果: 成功{processed_items}件、エラー{error_items}件")
-            
-            # 時系列データに変換
-            total_price_history = []
-            for bucket_time in sorted(timestamp_totals.keys()):
-                data = timestamp_totals[bucket_time]
-                
-                # 緩和版: 最小アイテム数の閾値を緩和
-                if data['item_count'] >= self.min_items_threshold:
-                    total_price_history.append({
-                        'timestamp': bucket_time,
-                        'total_price': data['total_price'],
-                        'item_count': data['item_count'],
-                        'average_price': data['total_price'] // data['item_count'],
-                        'original_points': data['total_points']
-                    })
-            
-            # 表示最適化のためデータポイントを制限
-            limited_history = self.limit_data_points(total_price_history, interval)
-            
-            logger.info(f"時間区切り集計完了 {interval}: {len(limited_history)}時間枠（表示最適化済み）")
-            logger.info(f"  処理アイテム: {processed_items}, 区切り間隔: {self.bucket_intervals[interval]}")
-            
-            # データ品質レポート
-            if limited_history:
-                prices = [p['total_price'] for p in limited_history]
-                item_counts = [p['item_count'] for p in limited_history]
-                logger.info(f"  価格範囲: {min(prices):,} - {max(prices):,} NESO")
-                logger.info(f"  アイテム数範囲: {min(item_counts)} - {max(item_counts)}件")
-                
-                # データ期間の計算
-                first_time = limited_history[0]['timestamp']
-                last_time = limited_history[-1]['timestamp']
-                try:
-                    first_dt = datetime.fromisoformat(first_time.replace('Z', '+00:00'))
-                    last_dt = datetime.fromisoformat(last_time.replace('Z', '+00:00'))
-                    span = last_dt - first_dt
-                    logger.info(f"  データ期間: {span.days}日{span.seconds//3600}時間")
-                except Exception as e:
-                    logger.debug(f"期間計算エラー: {e}")
-            
-            return limited_history
-            
-        except json.JSONDecodeError as e:
-            logger.error(f"JSON読み込みエラー {interval}: {e}")
-            return []
-        except Exception as e:
-            logger.error(f"集計エラー {interval}: {e}")
-            return []
-    
-    def generate_chart_data(self, interval, total_data):
-        """Chart.js用データを生成（緩和版）"""
-        if not total_data:
-            logger.error(f"チャートデータなし: {interval}")
-            return None
-        
-        try:
-            def format_time(timestamp_str):
-                try:
-                    timestamp = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
-                    if interval == '1hour':
-                        return timestamp.strftime('%m/%d %H:00')
-                    elif interval == '12hour':
-                        return timestamp.strftime('%m/%d %H:00')
-                    else:  # 1day
-                        return timestamp.strftime('%m/%d')
-                except Exception as e:
-                    logger.warn(f"時刻フォーマットエラー: {timestamp_str} -> {e}")
-                    return str(timestamp_str)
-            
-            # データ検証（緩和版）
-            valid_points = []
-            for point in total_data:
-                if (isinstance(point, dict) and 
-                    'timestamp' in point and 
-                    'total_price' in point and 
-                    'average_price' in point and
-                    isinstance(point['total_price'], int) and
-                    isinstance(point['average_price'], int)):
-                    
-                    # 緩和版: ゼロ価格も条件次第で有効
-                    if point['total_price'] > 0 or (point['total_price'] == 0 and self.include_zero_prices):
-                        valid_points.append(point)
-            
-            if len(valid_points) == 0:
-                logger.error(f"有効なデータポイントがありません: {interval}")
-                return None
-            
-            labels = [format_time(point['timestamp']) for point in valid_points]
-            total_prices = [point['total_price'] for point in valid_points]
-            average_prices = [point['average_price'] for point in valid_points]
-            
-            # 間隔の説明
-            interval_descriptions = {
-                '1hour': '1週間分（1時間毎）',
-                '12hour': '1ヶ月分（12時間毎）',
-                '1day': '1年分（1日毎）'
-            }
-            
-            chart_data = {
-                'labels': labels,
-                'datasets': [
-                    {
-                        'label': f'総価格 ({interval_descriptions.get(interval, interval)})',
-                        'data': total_prices,
-                        'borderColor': '#e74c3c',
-                        'backgroundColor': 'rgba(231, 76, 60, 0.1)',
-                        'borderWidth': 2,
-                        'fill': True,
-                        'tension': 0.4,
-                        'pointRadius': 2,
-                        'pointHoverRadius': 4,
-                        'yAxisID': 'y'
-                    },
-                    {
-                        'label': f'平均価格 ({interval_descriptions.get(interval, interval)})',
-                        'data': average_prices,
-                        'borderColor': '#3498db',
-                        'backgroundColor': 'rgba(52, 152, 219, 0.1)',
-                        'borderWidth': 2,
-                        'fill': False,
-                        'tension': 0.4,
-                        'pointRadius': 1,
-                        'pointHoverRadius': 3,
-                        'yAxisID': 'y1'
-                    }
-                ]
-            }
-            
-            logger.info(f"チャートデータ生成完了 {interval}: {len(valid_points)}ポイント")
-            logger.info(f"  時間範囲: {labels[0]} ～ {labels[-1]}")
-            
-            return chart_data
-            
-        except Exception as e:
-            logger.error(f"チャートデータ生成エラー {interval}: {e}")
-            return None
-    
-    def save_total_data(self, interval, total_data):
-        """総価格データを保存（緩和版）"""
-        if not total_data:
-            logger.warn(f"保存するデータがありません: {interval}")
-            return False
-        
-        try:
-            # 生データとして保存（詳細情報保持）
-            raw_file = os.path.join(self.history_dir, f"total_price_optimized_{interval}.json")
-            with open(raw_file, 'w', encoding='utf-8') as f:
-                json.dump(total_data, f, ensure_ascii=False, indent=2)
-            
-            # Chart.js用データとして保存（従来のファイル名維持）
-            chart_data = self.generate_chart_data(interval, total_data)
-            if chart_data:
-                chart_file = os.path.join(self.history_dir, f"total_price_{interval}.json")
-                with open(chart_file, 'w', encoding='utf-8') as f:
-                    json.dump(chart_data, f, ensure_ascii=False, indent=2)
-                
-                logger.info(f"保存完了 {interval}: {len(total_data)}時間枠 -> {len(chart_data['labels'])}チャートポイント")
-            else:
-                logger.error(f"チャートデータ生成失敗: {interval}")
+            if not valid_prices:
+                logger.warning("有効な価格データがありません")
                 return False
+            
+            # 総価格情報を計算
+            total_price = sum(valid_prices)
+            average_price = int(statistics.mean(valid_prices))
+            median_price = int(statistics.median(valid_prices))
+            min_price = min(valid_prices)
+            max_price = max(valid_prices)
+            
+            timestamp = datetime.now().isoformat()
+            
+            # 30分毎の総価格データポイントを作成
+            total_point = {
+                'timestamp': timestamp,
+                'total_price': total_price,
+                'average_price': average_price,
+                'median_price': median_price,
+                'min_price': min_price,
+                'max_price': max_price,
+                'item_count': len(valid_prices)
+            }
+            
+            # 重複チェック（同じ分の重複を避ける）
+            current_minute = datetime.now().replace(second=0, microsecond=0)
+            
+            # 最新データが同じ分の場合は更新、そうでなければ追加
+            if (self.total_price_raw_data and 
+                len(self.total_price_raw_data) > 0):
                 
+                last_point = self.total_price_raw_data[-1]
+                try:
+                    last_time = datetime.fromisoformat(last_point['timestamp'].replace('Z', '+00:00'))
+                    last_minute = last_time.replace(second=0, microsecond=0)
+                    
+                    if current_minute == last_minute:
+                        # 同じ分のデータを更新
+                        self.total_price_raw_data[-1] = total_point
+                        logger.info(f"総価格データ更新（同分内）: 合計{total_price:,} NESO")
+                    else:
+                        # 新しい分のデータを追加
+                        self.total_price_raw_data.append(total_point)
+                        logger.info(f"総価格データ追加: 合計{total_price:,} NESO, 平均{average_price:,} NESO ({len(valid_prices)}アイテム)")
+                except Exception:
+                    # タイムスタンプ解析エラーの場合は追加
+                    self.total_price_raw_data.append(total_point)
+            else:
+                # 初回データまたは空の場合
+                self.total_price_raw_data.append(total_point)
+                logger.info(f"総価格データ初回追加: 合計{total_price:,} NESO, 平均{average_price:,} NESO ({len(valid_prices)}アイテム)")
+            
             return True
             
         except Exception as e:
-            logger.error(f"保存エラー {interval}: {e}")
+            logger.error(f"総価格データ収集エラー: {e}")
             return False
-    
-    def process_all(self):
-        """全間隔の処理を実行（緩和版）"""
-        results = {}
+
+    def aggregate_total_price_for_interval(self, interval_type):
+        """総価格データを指定間隔で集約"""
+        if not self.total_price_raw_data:
+            logger.warning(f"30分毎総価格データが不足: {interval_type}")
+            return None
         
-        logger.info("🚀 緩和版集計処理開始")
+        config = self.price_intervals[interval_type]
+        interval_duration = config['interval']
         
-        for interval in self.intervals:
-            logger.info(f"処理開始: {interval}")
-            
-            # 時間区切りで集計（緩和版）
-            total_data = self.aggregate_by_timestamp(interval)
-            
-            if total_data:
-                # 保存
-                saved = self.save_total_data(interval, total_data)
+        raw_data = list(self.total_price_raw_data)
+        aggregated_data = []
+        current_group = []
+        group_start_time = None
+        
+        for data_point in raw_data:
+            try:
+                point_time = datetime.fromisoformat(data_point['timestamp'].replace('Z', '+00:00'))
                 
-                results[interval] = {
-                    'total_buckets': len(total_data),
-                    'saved': saved,
-                    'latest_total': total_data[-1]['total_price'] if total_data else 0,
-                    'latest_count': total_data[-1]['item_count'] if total_data else 0,
-                    'bucket_interval': str(self.bucket_intervals[interval]),
-                    'display_limit': self.display_limits[interval]
+                if group_start_time is None:
+                    group_start_time = point_time
+                    current_group = [data_point]
+                elif point_time - group_start_time < interval_duration:
+                    current_group.append(data_point)
+                else:
+                    # 現在のグループを集約
+                    if current_group:
+                        aggregated_point = self.create_aggregated_point(current_group)
+                        aggregated_data.append(aggregated_point)
+                    
+                    # 新しいグループを開始
+                    group_start_time = point_time
+                    current_group = [data_point]
+                    
+            except Exception as e:
+                logger.debug(f"総価格データポイント処理エラー: {e}")
+                continue
+        
+        # 最後のグループを処理
+        if current_group:
+            aggregated_point = self.create_aggregated_point(current_group)
+            aggregated_data.append(aggregated_point)
+        
+        # Chart.js用のデータ形式で返す
+        return self.format_total_price_chart_data(aggregated_data, interval_type)
+
+    def create_aggregated_point(self, group):
+        """データグループから集約ポイントを作成"""
+        if not group:
+            return None
+        
+        # 各指標の平均を計算
+        avg_total = int(statistics.mean([p['total_price'] for p in group]))
+        avg_average = int(statistics.mean([p['average_price'] for p in group]))
+        avg_median = int(statistics.mean([p['median_price'] for p in group]))
+        min_of_mins = min([p['min_price'] for p in group])
+        max_of_maxs = max([p['max_price'] for p in group])
+        avg_count = int(statistics.mean([p['item_count'] for p in group]))
+        
+        return {
+            'timestamp': group[-1]['timestamp'],  # 最新のタイムスタンプを使用
+            'total_price': avg_total,
+            'average_price': avg_average,
+            'median_price': avg_median,
+            'min_price': min_of_mins,
+            'max_price': max_of_maxs,
+            'item_count': avg_count,
+            'data_points': len(group)
+        }
+
+    def format_total_price_chart_data(self, aggregated_data, interval_type):
+        """総価格データをChart.js形式にフォーマット"""
+        if not aggregated_data:
+            return {"labels": [], "datasets": []}
+        
+        # 時刻フォーマットを間隔に応じて調整
+        def format_time(timestamp_str):
+            try:
+                timestamp = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+                if interval_type == '1hour':
+                    return timestamp.strftime('%m/%d %H:%M')
+                elif interval_type == '12hour':
+                    return timestamp.strftime('%m/%d %H:%M')
+                else:  # 1day
+                    return timestamp.strftime('%m/%d')
+            except:
+                return timestamp_str
+        
+        labels = [format_time(point['timestamp']) for point in aggregated_data]
+        total_prices = [point['total_price'] for point in aggregated_data]
+        average_prices = [point['average_price'] for point in aggregated_data]
+        
+        config = self.price_intervals[interval_type]
+        
+        return {
+            'labels': labels,
+            'datasets': [
+                {
+                    'label': f'総価格 ({config["description"]})',
+                    'data': total_prices,
+                    'borderColor': '#e74c3c',
+                    'backgroundColor': 'rgba(231, 76, 60, 0.1)',
+                    'borderWidth': 3,
+                    'fill': True,
+                    'tension': 0.3,
+                    'yAxisID': 'y'
+                },
+                {
+                    'label': f'平均価格 ({config["description"]})',
+                    'data': average_prices,
+                    'borderColor': '#3498db',
+                    'backgroundColor': 'rgba(52, 152, 219, 0.1)',
+                    'borderWidth': 2,
+                    'fill': False,
+                    'tension': 0.3,
+                    'yAxisID': 'y1'
                 }
-                
-                # データ品質チェック
-                if total_data:
-                    prices = [p['total_price'] for p in total_data]
-                    logger.info(f"  価格範囲: {min(prices):,} - {max(prices):,} NESO")
+            ]
+        }
+
+    def save_total_price_data(self):
+        """総価格データを全ファイルに保存"""
+        try:
+            # 30分毎の総価格生データを保存
+            total_raw_file = os.path.join(self.history_dir, "total_price_raw_data.json")
+            with open(total_raw_file, 'w', encoding='utf-8') as f:
+                json.dump(list(self.total_price_raw_data), f, ensure_ascii=False, indent=2)
+            
+            logger.info(f"総価格30分毎データ保存: {len(self.total_price_raw_data)}ポイント")
+            
+            # 各間隔の集約済み総価格データを保存
+            for interval_type in self.price_intervals:
+                if interval_type in self.total_price_history:
+                    total_file = os.path.join(self.history_dir, f"total_price_{interval_type}.json")
+                    with open(total_file, 'w', encoding='utf-8') as f:
+                        json.dump(self.total_price_history[interval_type], f, ensure_ascii=False, indent=2)
+                    
+                    dataset_count = len(self.total_price_history[interval_type].get('datasets', []))
+                    label_count = len(self.total_price_history[interval_type].get('labels', []))
+                    
+                    logger.info(f"総価格{interval_type}チャートデータ保存: {label_count}ポイント, {dataset_count}データセット")
+            
+        except Exception as e:
+            logger.error(f"総価格データ保存エラー: {e}")
+
+    def update_all_aggregations(self):
+        """全ての集約データを更新"""
+        try:
+            # 現在の総価格を収集
+            if not self.collect_current_total_price():
+                logger.error("総価格データ収集に失敗しました")
+                return False
+            
+            # 各間隔での集約を実行
+            updated_intervals = []
+            for interval_type in self.price_intervals:
+                chart_data = self.aggregate_total_price_for_interval(interval_type)
+                if chart_data:
+                    self.total_price_history[interval_type] = chart_data
+                    updated_intervals.append(interval_type)
+                    
+                    # 集約統計をログ出力
+                    label_count = len(chart_data.get('labels', []))
+                    dataset_count = len(chart_data.get('datasets', []))
+                    
+                    logger.info(f"総価格{interval_type}集約完了: {label_count}ポイント, {dataset_count}データセット")
+            
+            if updated_intervals:
+                self.save_total_price_data()
+                logger.info(f"✅ 総価格集約更新完了: {updated_intervals}")
+                return True
             else:
-                results[interval] = {
-                    'total_buckets': 0,
-                    'saved': False,
-                    'latest_total': 0,
-                    'latest_count': 0,
-                    'bucket_interval': str(self.bucket_intervals[interval]),
-                    'display_limit': self.display_limits[interval]
+                logger.warning("総価格集約データが更新されませんでした")
+                return False
+                
+        except Exception as e:
+            logger.error(f"総価格集約更新エラー: {e}")
+            return False
+
+    def get_statistics(self):
+        """総価格集約統計情報を取得"""
+        stats = {
+            'raw_data_points': len(self.total_price_raw_data),
+            'intervals': {},
+            'configuration': {
+                'force_data_refresh': self.force_data_refresh,
+                'force_rebuild_aggregation': self.force_rebuild_aggregation,
+                'data_collection_interval': '30分毎'
+            }
+        }
+        
+        for interval_type, config in self.price_intervals.items():
+            if interval_type in self.total_price_history:
+                chart_data = self.total_price_history[interval_type]
+                label_count = len(chart_data.get('labels', []))
+                dataset_count = len(chart_data.get('datasets', []))
+                
+                stats['intervals'][interval_type] = {
+                    'chart_points': label_count,
+                    'datasets': dataset_count,
+                    'description': config['description'],
+                    'max_points': config['maxlen'],
+                    'has_data': label_count > 0
+                }
+            else:
+                stats['intervals'][interval_type] = {
+                    'chart_points': 0,
+                    'datasets': 0,
+                    'description': config['description'],
+                    'max_points': config['maxlen'],
+                    'has_data': False
                 }
         
-        return results
+        return stats
 
 def main():
-    """メイン実行：緩和版総価格集計"""
+    """メイン実行：総価格集約処理"""
     logger.info("=" * 50)
-    logger.info("MapleStory総価格集計（緩和版）開始")
+    logger.info("MapleStory総価格集約処理開始（30分毎データ対応）")
     logger.info("=" * 50)
     
     try:
-        aggregator = TimestampTotalAggregator()
+        # システム初期化
+        logger.info("総価格集約システム初期化: data/price_history")
+        aggregator = TotalPriceAggregator()
         
-        # 集計処理実行
-        results = aggregator.process_all()
+        # 全集約データを更新
+        success = aggregator.update_all_aggregations()
         
-        # 結果表示
-        logger.info("📊 緩和版集計結果:")
-        for interval, result in results.items():
-            logger.info(f"  {interval}: {result['total_buckets']}時間枠")
-            logger.info(f"    区切り間隔: {result['bucket_interval']}")
-            logger.info(f"    表示制限: {result['display_limit']}ポイント")
-            if result['latest_total'] > 0:
-                logger.info(f"    最新総価格: {result['latest_total']:,} NESO ({result['latest_count']}アイテム)")
+        # 統計表示
+        stats = aggregator.get_statistics()
+        logger.info(f"📊 総価格集約統計:")
+        logger.info(f"  30分毎生データ: {stats['raw_data_points']}ポイント")
+        logger.info(f"  設定: 強制リフレッシュ={stats['configuration']['force_data_refresh']}, 強制リビルド={stats['configuration']['force_rebuild_aggregation']}")
         
-        successful = sum(1 for r in results.values() if r['saved'])
-        logger.info(f"✅ 緩和版処理完了: {successful}/{len(aggregator.intervals)}間隔成功")
+        for interval, data in stats['intervals'].items():
+            status = "✅" if data['has_data'] else "❌"
+            logger.info(f"  {interval}: {status} {data['chart_points']}ポイント ({data['description']}) - {data['datasets']}データセット")
         
-        return successful
+        logger.info("=" * 50)
+        if success:
+            logger.info(f"✅ 総価格集約処理完了")
+        else:
+            logger.info(f"⚠️ 総価格集約処理で問題が発生")
+        logger.info("=" * 50)
+        
+        return success
         
     except Exception as e:
-        logger.error(f"❌ エラー: {e}")
-        return 0
+        logger.error(f"メイン実行エラー: {e}")
+        raise
 
 if __name__ == "__main__":
     main()
