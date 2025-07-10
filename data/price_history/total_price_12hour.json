@@ -1,12 +1,12 @@
 {
   "labels": [
-    "07/10 17:42"
+    "07/10 18:38"
   ],
   "datasets": [
     {
       "label": "総価格 (1ヶ月分（12時間毎）)",
       "data": [
-        695390918
+        695154612
       ],
       "borderColor": "#e74c3c",
       "backgroundColor": "rgba(231, 76, 60, 0.1)",
@@ -18,7 +18,7 @@
     {
       "label": "平均価格 (1ヶ月分（12時間毎）)",
       "data": [
-        2483538
+        2482694
       ],
       "borderColor": "#3498db",
       "backgroundColor": "rgba(52, 152, 219, 0.1)",
