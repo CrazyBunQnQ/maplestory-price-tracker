@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MapleStory装備価格一覧 - 30分毎価格追跡システム</title>
+    <title>MapleStory装備価格一覧 - 30分毎価格追跡システム（集約チャート対応）</title>
     
     <script>
         window.chartLoadingState = {
@@ -160,7 +160,7 @@
             letter-spacing: 1px;
         }
         
-        /* 総価格チャートセクション */
+        /* 総価格チャートセクション（30分毎データ対応） */
         .total-price-chart-section {
             background: white;
             border-bottom: 1px solid #dee2e6;
@@ -421,7 +421,7 @@
             color: white;
         }
         
-        /* チャート関連のCSS */
+        /* チャート関連のCSS（30分毎データ対応） */
         .price-chart-tooltip {
             position: absolute;
             background: white;
@@ -757,11 +757,11 @@
         <div class="main-content">
             <div class="header">
                 <h1>🍁 MapleStory装備価格一覧</h1>
-                <p>30分毎価格追跡システム - 装備アイテム価格情報</p>
+                <p>30分毎価格追跡システム（集約チャート対応） - 装備アイテム価格情報</p>
             </div>
             
             <div class="price-update-notice">
-                ⚠️ 価格は30分毎に更新されます（リアルタイム価格ではありません）
+                📊 30分毎にデータ収集、1時間/12時間/24時間毎に集約してチャート表示
             </div>
             
             <div class="stats" id="stats">
@@ -787,11 +787,11 @@
                 </div>
             </div>
             
-            <!-- 総価格チャートセクション -->
+            <!-- 総価格チャートセクション（30分毎データ集約対応） -->
             <div class="total-price-chart-section">
                 <div class="total-price-chart-header">
                     <div class="total-price-chart-title">
-                        📊 全アイテム価格推移
+                        📊 全アイテム価格推移（30分毎データ集約）
                         <span id="totalPriceDisplay" style="color: #e74c3c; font-size: 0.9rem;"></span>
                     </div>
                     <button id="toggleTotalChart" class="chart-toggle-btn">📈 チャート表示</button>
@@ -799,9 +799,9 @@
                 
                 <div id="totalPriceChartContainer" class="total-price-chart-container">
                     <div class="total-chart-interval-tabs">
-                        <button class="total-chart-interval-tab active" data-interval="1hour">1週間</button>
-                        <button class="total-chart-interval-tab" data-interval="12hour">1ヶ月</button>
-                        <button class="total-chart-interval-tab" data-interval="1day">1年</button>
+                        <button class="total-chart-interval-tab active" data-interval="1hour">1週間（1時間毎集約）</button>
+                        <button class="total-chart-interval-tab" data-interval="12hour">1ヶ月（12時間毎集約）</button>
+                        <button class="total-chart-interval-tab" data-interval="1day">1年（1日毎集約）</button>
                     </div>
                     <canvas id="totalPriceChart" width="800" height="280"></canvas>
                 </div>
@@ -896,9 +896,9 @@
     <!-- チャート用要素 -->
     <div id="priceChartTooltip" class="price-chart-tooltip" style="display: none;">
         <div class="chart-interval-tabs">
-            <button class="chart-interval-tab active" data-interval="1hour">1週間</button>
-            <button class="chart-interval-tab" data-interval="12hour">1ヶ月</button>
-            <button class="chart-interval-tab" data-interval="1day">1年</button>
+            <button class="chart-interval-tab active" data-interval="1hour">1週間（1時間毎）</button>
+            <button class="chart-interval-tab" data-interval="12hour">1ヶ月（12時間毎）</button>
+            <button class="chart-interval-tab" data-interval="1day">1年（1日毎）</button>
         </div>
         <canvas id="miniChart" width="290" height="160"></canvas>
     </div>
@@ -906,7 +906,7 @@
     <div id="comparisonOverlay" class="comparison-overlay" style="display: none;">
         <div class="comparison-chart-container">
             <div class="comparison-header">
-                <h3>📈 価格比較チャート</h3>
+                <h3>📈 価格比較チャート（30分毎データ集約）</h3>
                 <button onclick="closeComparison()" class="close-btn">×</button>
             </div>
             
@@ -923,31 +923,15 @@
             </div>
             
             <div class="chart-interval-tabs">
-                <button class="chart-interval-tab active" data-interval="1hour">1週間分</button>
-                <button class="chart-interval-tab" data-interval="12hour">1ヶ月分</button>
-                <button class="chart-interval-tab" data-interval="1day">1年分</button>
+                <button class="chart-interval-tab active" data-interval="1hour">1週間分（1時間毎集約）</button>
+                <button class="chart-interval-tab" data-interval="12hour">1ヶ月分（12時間毎集約）</button>
+                <button class="chart-interval-tab" data-interval="1day">1年分（1日毎集約）</button>
             </div>
             <canvas id="comparisonChart" width="860" height="540"></canvas>
         </div>
     </div>
     <script>
-        // 修正：正確な時間軸生成のためのシードベースランダム関数
-        class SeededRandom {
-            constructor(seed) {
-                this.seed = seed;
-            }
-            
-            next() {
-                this.seed = (this.seed * 9301 + 49297) % 233280;
-                return this.seed / 233280;
-            }
-            
-            range(min, max) {
-                return min + this.next() * (max - min);
-            }
-        }
-
-        // MapleStory価格追跡システム（時間軸修正版）
+        // 30分毎データ集約対応のMapleStory価格追跡システム
         class MapleStoryPriceTracker {
             constructor() {
                 this.rawData = {};
@@ -1648,7 +1632,7 @@
             }
         }
 
-        // 修正：正確な時間軸を生成するチャート管理クラス
+        // 30分毎データ集約対応のチャート管理クラス
         class PriceChartManager {
             constructor() {
                 this.tooltip = null;
@@ -1660,32 +1644,35 @@
                 this.dualAxisMode = false;
                 this.includeMarketAverage = false;
                 
-                // 修正：正確な間隔情報と時間軸設定
+                // 30分毎データ集約対応の間隔情報
                 this.intervals = {
-                    '1hour': '1週間分（1時間毎）',
-                    '12hour': '1ヶ月分（12時間毎）', 
-                    '1day': '1年分（1日毎）'
+                    '1hour': '1週間分（1時間毎集約）',
+                    '12hour': '1ヶ月分（12時間毎集約）', 
+                    '1day': '1年分（1日毎集約）'
                 };
                 
-                // 修正：正確な時間軸設定
+                // 30分毎データから集約されたチャート設定
                 this.intervalConfigs = {
                     '1hour': { 
-                        points: 168,        // 7日 × 24時間 = 168ポイント
+                        points: 168,        // 7日 × 24時間 = 168ポイント（30分毎データから1時間毎に集約）
                         minuteStep: 60,     // 1時間 = 60分
                         maxTicks: 8,        // 横軸の最大ティック数
-                        timeFormat: 'MM/DD HH:mm'
+                        timeFormat: 'MM/DD HH:mm',
+                        aggregation: '30分毎データから1時間毎に平均化'
                     },
                     '12hour': { 
-                        points: 60,         // 30日 × 2回/日 = 60ポイント
+                        points: 60,         // 30日 × 2回/日 = 60ポイント（30分毎データから12時間毎に集約）
                         minuteStep: 720,    // 12時間 = 720分
                         maxTicks: 15,       // 12時間ごとなので、より多くのティックを表示
-                        timeFormat: 'MM/DD HH:mm'
+                        timeFormat: 'MM/DD HH:mm',
+                        aggregation: '30分毎データから12時間毎に平均化'
                     },
                     '1day': { 
-                        points: 365,        // 365日
+                        points: 365,        // 365日（30分毎データから1日毎に集約）
                         minuteStep: 1440,   // 1日 = 1440分
                         maxTicks: 12,
-                        timeFormat: 'MM/DD'
+                        timeFormat: 'MM/DD',
+                        aggregation: '30分毎データから1日毎に平均化'
                     }
                 };
                 
@@ -1733,6 +1720,7 @@
                 this.setupTotalPriceChart();
                 this.isInitialized = true;
                 console.log('PriceChartManager initialized successfully with Chart.js v' + Chart.version);
+                console.log('30分毎データ集約システム対応完了');
             }
             
             setupEventListeners() {
@@ -1767,7 +1755,7 @@
                     this.toggleTotalPriceChart();
                 });
                 
-                console.log('Chart event listeners setup complete');
+                console.log('Chart event listeners setup complete (30分毎データ集約対応)');
             }
             
             setupTotalPriceChart() {
@@ -1801,29 +1789,60 @@
                 }
             }
             
-            // 修正：正確な時間軸を生成するデータ生成関数
-            generateAccurateTimeAxisData(baseValue, intervalType, itemId = null) {
-                const now = new Date();
-                const dataPoints = [];
-                const labels = [];
+            async fetchTotalPriceChartData(interval) {
+                const cacheKey = `total_price_${interval}`;
                 
-                const config = this.intervalConfigs[intervalType];
-                if (!config) {
-                    console.error(`Unknown interval type: ${intervalType}`);
-                    return { labels: [], data: [] };
+                if (this.chartDataCache.has(cacheKey)) {
+                    console.log(`Using cached total price data for ${interval}`);
+                    return this.chartDataCache.get(cacheKey);
                 }
                 
-                // シード値を固定（アイテムIDベース）
-                const seed = itemId ? parseInt(itemId) : 12345;
-                const rng = new SeededRandom(seed + intervalType.charCodeAt(0));
+                try {
+                    const url = `./data/price_history/total_price_${interval}.json`;
+                    console.log(`Fetching 30分毎集約総価格データ from: ${url}`);
+                    
+                    const response = await fetch(url + '?v=' + Date.now());
+                    
+                    if (!response.ok) {
+                        console.warn(`30分毎集約総価格データが見つかりません for ${interval}, using sample data`);
+                        return this.getSampleTotalPriceChartData(interval);
+                    }
+                    
+                    const chartData = await response.json();
+                    console.log(`30分毎集約総価格データ loaded for ${interval}:`, chartData);
+                    
+                    if (!chartData || !chartData.labels || !chartData.datasets || chartData.datasets.length === 0) {
+                        console.warn(`Invalid 30分毎集約総価格データ for ${interval}, using sample data`);
+                        return this.getSampleTotalPriceChartData(interval);
+                    }
+                    
+                    this.chartDataCache.set(cacheKey, chartData);
+                    setTimeout(() => this.chartDataCache.delete(cacheKey), 300000);
+                    
+                    return chartData;
+                    
+                } catch (error) {
+                    console.error(`Error fetching 30分毎集約総価格データ for ${interval}:`, error);
+                    return this.getSampleTotalPriceChartData(interval);
+                }
+            }
+            
+            getSampleTotalPriceChartData(interval) {
+                console.log(`Generating sample 30分毎集約総価格データ for ${interval}`);
                 
-                console.log(`Generating ${config.points} data points for ${intervalType} (${config.minuteStep} minute intervals)`);
+                const baseTotal = 864000000; // 8.64億NESO
+                const baseAvg = 3075967; // 約307万NESO
                 
+                const config = this.intervalConfigs[interval];
+                const now = new Date();
+                const labels = [];
+                const totalData = [];
+                const avgData = [];
+                
+                // 30分毎データから集約されたサンプルデータを生成
                 for (let i = config.points - 1; i >= 0; i--) {
-                    // 正確な時間計算（分単位で計算）
                     const time = new Date(now.getTime() - i * config.minuteStep * 60 * 1000);
                     
-                    // 時刻フォーマット（設定に基づく）
                     let label;
                     if (config.timeFormat === 'MM/DD') {
                         label = time.toLocaleDateString('ja-JP', { 
@@ -1842,71 +1861,21 @@
                     
                     labels.push(label);
                     
-                    // 価格変動をシミュレート（±15%の範囲でシード固定）
-                    const variation = (rng.next() - 0.5) * 0.3;
-                    const price = Math.round(baseValue * (1 + variation));
-                    dataPoints.push(price);
+                    // 集約された価格変動をシミュレート（30分毎データの平均として）
+                    const variation = (Math.random() - 0.5) * 0.15; // 15%の変動範囲に縮小（集約効果）
+                    const totalPrice = Math.round(baseTotal * (1 + variation));
+                    const avgPrice = Math.round(baseAvg * (1 + variation * 0.8)); // 平均はより安定
+                    
+                    totalData.push(totalPrice);
+                    avgData.push(avgPrice);
                 }
-                
-                console.log(`Generated time axis data: ${labels.length} labels, first: ${labels[0]}, last: ${labels[labels.length-1]}`);
-                
-                return { labels, data: dataPoints };
-            }
-            
-            async fetchTotalPriceChartData(interval) {
-                const cacheKey = `total_price_${interval}`;
-                
-                if (this.chartDataCache.has(cacheKey)) {
-                    console.log(`Using cached total price data for ${interval}`);
-                    return this.chartDataCache.get(cacheKey);
-                }
-                
-                try {
-                    const url = `./data/price_history/total_price_${interval}.json`;
-                    console.log(`Fetching total price chart data from: ${url}`);
-                    
-                    const response = await fetch(url + '?v=' + Date.now());
-                    
-                    if (!response.ok) {
-                        console.warn(`Total price chart data not found for ${interval}, using sample data`);
-                        return this.getSampleTotalPriceChartData(interval);
-                    }
-                    
-                    const chartData = await response.json();
-                    console.log(`Total price chart data loaded for ${interval}:`, chartData);
-                    
-                    if (!chartData || !chartData.labels || !chartData.datasets || chartData.datasets.length === 0) {
-                        console.warn(`Invalid total price chart data for ${interval}, using sample data`);
-                        return this.getSampleTotalPriceChartData(interval);
-                    }
-                    
-                    this.chartDataCache.set(cacheKey, chartData);
-                    setTimeout(() => this.chartDataCache.delete(cacheKey), 300000);
-                    
-                    return chartData;
-                    
-                } catch (error) {
-                    console.error(`Error fetching total price chart data for ${interval}:`, error);
-                    return this.getSampleTotalPriceChartData(interval);
-                }
-            }
-            
-            // 修正：正確な時間軸を持つ総価格サンプルデータ
-            getSampleTotalPriceChartData(interval) {
-                console.log(`Generating accurate sample total price data for ${interval}`);
-                
-                const baseTotal = 864000000; // 8.64億NESO（画像で見える値）
-                const baseAvg = 3075967; // 約307万NESO（画像で見える値）
-                
-                const totalData = this.generateAccurateTimeAxisData(baseTotal, interval, 'total');
-                const avgData = this.generateAccurateTimeAxisData(baseAvg, interval, 'average');
                 
                 return {
-                    labels: totalData.labels,
+                    labels: labels,
                     datasets: [
                         {
                             label: `総価格 (${this.intervals[interval]})`,
-                            data: totalData.data,
+                            data: totalData,
                             borderColor: '#e74c3c',
                             backgroundColor: 'rgba(231, 76, 60, 0.1)',
                             borderWidth: 3,
@@ -1916,7 +1885,7 @@
                         },
                         {
                             label: `平均価格 (${this.intervals[interval]})`,
-                            data: avgData.data,
+                            data: avgData,
                             borderColor: '#3498db',
                             backgroundColor: 'rgba(52, 152, 219, 0.1)',
                             borderWidth: 2,
@@ -1974,6 +1943,9 @@
                                             } else {
                                                 return `${context.dataset.label}: ${value.toLocaleString()} NESO`;
                                             }
+                                        },
+                                        afterBody: function() {
+                                            return `データ: ${config.aggregation}`;
                                         }
                                     }
                                 }
@@ -2044,15 +2016,15 @@
                         }
                     });
                     
-                    console.log(`Total price chart rendered with ${chartData.labels.length} data points for ${this.currentTotalInterval}`);
+                    console.log(`30分毎集約総価格チャート rendered with ${chartData.labels.length} data points for ${this.currentTotalInterval}`);
                     
                 } catch (error) {
-                    console.error('Error rendering total price chart:', error);
+                    console.error('Error rendering 30分毎集約総価格チャート:', error);
                 }
             }
             
             switchTotalInterval(interval, clickedTab) {
-                console.log(`Switching total price interval to: ${interval}`);
+                console.log(`Switching 30分毎集約総価格 interval to: ${interval}`);
                 this.currentTotalInterval = interval;
                 
                 const tabContainer = clickedTab.parentElement;
@@ -2063,20 +2035,51 @@
                 this.loadTotalPriceChart();
             }
             
-            // 修正：個別アイテムの正確な時間軸サンプルデータ
+            // 個別アイテムの30分毎データ集約対応サンプルデータ
             getSampleChartData(itemId) {
                 const itemName = tracker?.rawData?.[itemId]?.item_name || 'Unknown Item';
                 const basePrice = tracker?.parsePrice(tracker.rawData?.[itemId]?.item_price) || 1000000;
                 
-                console.log(`Generating accurate sample data for ${itemName} (base price: ${basePrice}) with interval ${this.currentInterval}`);
+                console.log(`Generating sample 30分毎集約データ for ${itemName} (base price: ${basePrice}) with interval ${this.currentInterval}`);
                 
-                const sampleData = this.generateAccurateTimeAxisData(basePrice, this.currentInterval, itemId);
+                const config = this.intervalConfigs[this.currentInterval];
+                const now = new Date();
+                const labels = [];
+                const data = [];
+                
+                // 30分毎データから集約されたサンプルデータを生成
+                for (let i = config.points - 1; i >= 0; i--) {
+                    const time = new Date(now.getTime() - i * config.minuteStep * 60 * 1000);
+                    
+                    let label;
+                    if (config.timeFormat === 'MM/DD') {
+                        label = time.toLocaleDateString('ja-JP', { 
+                            month: '2-digit', 
+                            day: '2-digit' 
+                        });
+                    } else {
+                        label = time.toLocaleDateString('ja-JP', { 
+                            month: '2-digit', 
+                            day: '2-digit' 
+                        }) + ' ' + time.toLocaleTimeString('ja-JP', { 
+                            hour: '2-digit', 
+                            minute: '2-digit' 
+                        });
+                    }
+                    
+                    labels.push(label);
+                    
+                    // 集約された価格変動をシミュレート（30分毎データの平均として）
+                    const variation = (Math.random() - 0.5) * 0.2; // 20%の変動範囲に縮小（集約効果）
+                    const price = Math.round(basePrice * (1 + variation));
+                    data.push(price);
+                }
                 
                 return {
-                    labels: sampleData.labels,
+                    labels: labels,
                     datasets: [{
                         label: `${itemName} (${this.intervals[this.currentInterval]})`,
-                        data: sampleData.data,
+                        data: data,
                         borderColor: '#2c3e50',
                         backgroundColor: 'rgba(44, 62, 80, 0.1)',
                         borderWidth: 2,
@@ -2120,7 +2123,7 @@
                 }
             }
             
-            // 修正：市場平均価格を含む詳細比較チャート
+            // 30分毎集約データを含む詳細比較チャート
             async renderComparisonChart() {
                 if (typeof Chart === 'undefined') {
                     console.error('Chart.js not available for comparison chart');
@@ -2143,7 +2146,7 @@
                 const itemB = Array.from(tracker.selectedItemsB.values())[0];
                 
                 try {
-                    console.log('Rendering comparison chart for:', itemA.item_name, 'vs', itemB.item_name);
+                    console.log('Rendering 30分毎集約比較チャート for:', itemA.item_name, 'vs', itemB.item_name);
                     
                     const [dataA, dataB] = await Promise.all([
                         this.fetchChartData(itemA.item_id, this.currentInterval),
@@ -2151,14 +2154,14 @@
                     ]);
                     
                     if (!dataA || !dataB) {
-                        alert('比較データの取得に失敗しました');
+                        alert('30分毎集約比較データの取得に失敗しました');
                         return;
                     }
                     
                     // 基本のデータセット
                     const datasets = [
                         {
-                            label: `${itemA.item_name} (セットA)`,
+                            label: `${itemA.item_name} (セットA) - ${this.intervals[this.currentInterval]}`,
                             data: dataA.datasets[0].data,
                             borderColor: '#28a745',
                             backgroundColor: 'rgba(40, 167, 69, 0.1)',
@@ -2168,7 +2171,7 @@
                             yAxisID: this.dualAxisMode ? 'y' : 'y'
                         },
                         {
-                            label: `${itemB.item_name} (セットB)`,
+                            label: `${itemB.item_name} (セットB) - ${this.intervals[this.currentInterval]}`,
                             data: dataB.datasets[0].data,
                             borderColor: '#ffc107',
                             backgroundColor: 'rgba(255, 193, 7, 0.1)',
@@ -2185,7 +2188,7 @@
                             const avgData = await this.fetchMarketAverageData(this.currentInterval);
                             if (avgData && avgData.data) {
                                 datasets.push({
-                                    label: `市場平均価格 (全アイテム)`,
+                                    label: `市場平均価格 (全アイテム) - ${this.intervals[this.currentInterval]}`,
                                     data: avgData.data,
                                     borderColor: '#9b59b6',
                                     backgroundColor: 'rgba(155, 89, 182, 0.1)',
@@ -2212,7 +2215,7 @@
                         x: {
                             title: {
                                 display: true,
-                                text: `時間軸 (${this.intervals[this.currentInterval]})`
+                                text: `時間軸 (${this.intervals[this.currentInterval]}) - ${config.aggregation}`
                             },
                             ticks: {
                                 maxTicksLimit: config.maxTicks
@@ -2270,7 +2273,7 @@
                         scalesConfig.y = {
                             title: {
                                 display: true,
-                                text: '価格 (NESO)'
+                                text: '価格 (NESO) - 30分毎データ集約'
                             },
                             ticks: {
                                 callback: function(value) {
@@ -2298,6 +2301,9 @@
                                     callbacks: {
                                         label: function(context) {
                                             return `${context.dataset.label}: ${context.parsed.y.toLocaleString()} NESO`;
+                                        },
+                                        afterBody: function() {
+                                            return `データ: ${config.aggregation}`;
                                         }
                                     }
                                 },
@@ -2320,15 +2326,15 @@
                         }
                     });
                     
-                    console.log('Comparison chart rendered successfully');
+                    console.log('30分毎集約比較チャート rendered successfully');
                     
                 } catch (error) {
-                    console.error('Error rendering comparison chart:', error);
-                    alert('比較チャートの描画に失敗しました');
+                    console.error('Error rendering 30分毎集約比較チャート:', error);
+                    alert('30分毎集約比較チャートの描画に失敗しました');
                 }
             }
             
-            // 新規追加：市場平均価格データ取得
+            // 30分毎集約市場平均価格データ取得
             async fetchMarketAverageData(interval) {
                 try {
                     const totalData = await this.fetchTotalPriceChartData(interval);
@@ -2339,14 +2345,22 @@
                         };
                     }
                     
-                    const avgData = this.generateAccurateTimeAxisData(3075967, interval, 'market_average');
-                    return {
-                        labels: avgData.labels,
-                        data: avgData.data
-                    };
+                    // フォールバック：サンプルデータ
+                    const config = this.intervalConfigs[interval];
+                    const baseAvg = 3075967;
+                    const now = new Date();
+                    const data = [];
+                    
+                    for (let i = config.points - 1; i >= 0; i--) {
+                        const variation = (Math.random() - 0.5) * 0.15; // 集約効果で変動を抑制
+                        const avgPrice = Math.round(baseAvg * (1 + variation));
+                        data.push(avgPrice);
+                    }
+                    
+                    return { data: data };
                     
                 } catch (error) {
-                    console.error('Error fetching market average data:', error);
+                    console.error('Error fetching 30分毎集約市場平均データ:', error);
                     return null;
                 }
             }
@@ -2355,23 +2369,25 @@
                 const cacheKey = `${itemId}_${interval}`;
                 
                 if (this.chartDataCache.has(cacheKey)) {
-                    console.log(`Using cached data for ${cacheKey}`);
+                    console.log(`Using cached 30分毎集約データ for ${cacheKey}`);
                     return this.chartDataCache.get(cacheKey);
                 }
                 
                 try {
                     const url = `./data/price_history/${itemId}_${interval}.json`;
+                    console.log(`Fetching 30分毎集約個別アイテムデータ from: ${url}`);
+                    
                     const response = await fetch(url + '?v=' + Date.now());
                     
                     if (!response.ok) {
-                        console.warn(`Chart data not found for ${itemId} (${interval}), using sample data`);
+                        console.warn(`30分毎集約チャートデータが見つかりません for ${itemId} (${interval}), using sample data`);
                         return this.getSampleChartData(itemId);
                     }
                     
                     const chartData = await response.json();
                     
                     if (!chartData || !chartData.labels || !chartData.datasets || chartData.datasets.length === 0) {
-                        console.warn(`Invalid chart data for ${itemId} (${interval}), using sample data`);
+                        console.warn(`Invalid 30分毎集約チャートデータ for ${itemId} (${interval}), using sample data`);
                         return this.getSampleChartData(itemId);
                     }
                     
@@ -2381,7 +2397,7 @@
                     return chartData;
                     
                 } catch (error) {
-                    console.error(`Error fetching chart data for ${itemId} (${interval}):`, error);
+                    console.error(`Error fetching 30分毎集約チャートデータ for ${itemId} (${interval}):`, error);
                     return this.getSampleChartData(itemId);
                 }
             }
@@ -2427,7 +2443,7 @@
                     this.renderMiniChart(chartData, itemId);
                     
                 } catch (error) {
-                    console.error('Error showing price chart:', error);
+                    console.error('Error showing 30分毎集約価格チャート:', error);
                 }
             }
             
@@ -2477,6 +2493,9 @@
                                         },
                                         title: function(context) {
                                             return context[0].label;
+                                        },
+                                        afterBody: function() {
+                                            return `データ: ${config.aggregation}`;
                                         }
                                     }
                                 }
@@ -2514,15 +2533,15 @@
                         }
                     });
                     
-                    console.log(`Mini chart rendered for item ${itemId} with ${chartData.labels.length} data points`);
+                    console.log(`30分毎集約ミニチャート rendered for item ${itemId} with ${chartData.labels.length} data points`);
                     
                 } catch (error) {
-                    console.error('Error rendering mini chart:', error);
+                    console.error('Error rendering 30分毎集約ミニチャート:', error);
                 }
             }
             
             switchInterval(interval, clickedTab) {
-                console.log(`Switching interval to: ${interval}`);
+                console.log(`Switching 30分毎集約間隔 to: ${interval}`);
                 this.currentInterval = interval;
                 
                 const tabContainer = clickedTab.parentElement;
@@ -2595,18 +2614,20 @@
             }
         }
         
-        // アプリケーション初期化
+        // アプリケーション初期化（30分毎データ集約システム対応）
         let tracker;
         let chartManager;
         
         document.addEventListener('DOMContentLoaded', function() {
-            console.log('DOM loaded, initializing systems...');
+            console.log('DOM loaded, initializing 30分毎データ集約システム...');
             
             tracker = new MapleStoryPriceTracker();
             window.tracker = tracker;
             
             chartManager = new PriceChartManager();
             window.chartManager = chartManager;
+            
+            console.log('30分毎データ収集→時間間隔別集約→チャート表示システム初期化完了');
         });
     </script>
 </body>
