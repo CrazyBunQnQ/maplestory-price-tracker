@@ -1,0 +1,2634 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MapleStory装备价格一览 - 30分钟价格追踪系统（聚合图表支持）</title>
+    
+    <script>
+        window.chartLoadingState = {
+            attempts: 0,
+            maxAttempts: 3,
+            loaded: false,
+            error: null
+        };
+        
+        function loadChartjsCSPSafe(attempt = 0) {
+            const cdnUrls = [
+                'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js',
+                'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js',
+                'https://unpkg.com/chart.js@4.4.1/dist/chart.umd.js'
+            ];
+            
+            if (attempt >= cdnUrls.length) {
+                console.error('All Chart.js CDN attempts failed');
+                window.chartLoadingState.error = 'All CDN attempts failed';
+                return;
+            }
+            
+            const script = document.createElement('script');
+            script.src = cdnUrls[attempt];
+            script.async = false;
+            script.type = 'text/javascript';
+            
+            script.onload = function() {
+                console.log(`Chart.js (UMD) loaded successfully from: ${cdnUrls[attempt]}`);
+                
+                let checkAttempts = 0;
+                const checkChart = () => {
+                    checkAttempts++;
+                    if (typeof Chart !== 'undefined' && Chart.Chart) {
+                        window.chartLoadingState.loaded = true;
+                        console.log('Chart.js validation successful, version:', Chart.version);
+                        document.dispatchEvent(new CustomEvent('chartjsReady'));
+                    } else if (checkAttempts < 10) {
+                        setTimeout(checkChart, 100);
+                    } else {
+                        console.error('Chart.js loaded but not accessible');
+                        window.chartLoadingState.error = 'Chart object not accessible';
+                    }
+                };
+                
+                setTimeout(checkChart, 50);
+            };
+            
+            script.onerror = function() {
+                console.warn(`Failed to load Chart.js from: ${cdnUrls[attempt]}`);
+                window.chartLoadingState.attempts++;
+                loadChartjsCSPSafe(attempt + 1);
+            };
+            
+            document.head.appendChild(script);
+        }
+        
+        loadChartjsCSPSafe();
+    </script>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', 'Microsoft YaHei', 'SimHei', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+            line-height: 1.5;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.95);
+            min-height: 100vh;
+            backdrop-filter: blur(10px);
+            display: flex;
+        }
+        
+        .main-content {
+            flex: 1;
+            margin-right: 350px;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            color: white;
+            padding: 25px 20px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .header h1 {
+            font-size: 2rem;
+            margin-bottom: 8px;
+            position: relative;
+            z-index: 1;
+        }
+        
+        .header p {
+            font-size: 0.9rem;
+            opacity: 0.9;
+            position: relative;
+            z-index: 1;
+        }
+        
+        .price-update-notice {
+            background: #f39c12;
+            color: white;
+            padding: 8px;
+            text-align: center;
+            font-weight: bold;
+            font-size: 13px;
+        }
+        
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 12px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #dee2e6;
+        }
+        
+        .stat-item {
+            text-align: center;
+            padding: 12px;
+            background: white;
+            border-radius: 6px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease;
+        }
+        
+        .stat-item:hover {
+            transform: translateY(-2px);
+        }
+        
+        .stat-number {
+            font-size: 1.3rem;
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 3px;
+        }
+        
+        .stat-label {
+            font-size: 0.75rem;
+            color: #6c757d;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        /* 総価格チャートセクション（30分毎データ対応） */
+        .total-price-chart-section {
+            background: white;
+            border-bottom: 1px solid #dee2e6;
+            padding: 20px;
+        }
+        
+        .total-price-chart-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 15px;
+        }
+        
+        .total-price-chart-title {
+            font-size: 1.1rem;
+            font-weight: bold;
+            color: #2c3e50;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .chart-toggle-btn {
+            padding: 6px 12px;
+            background: #3498db;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: background 0.3s ease;
+        }
+        
+        .chart-toggle-btn:hover {
+            background: #2980b9;
+        }
+        
+        .total-price-chart-container {
+            width: 100%;
+            height: 300px;
+            position: relative;
+            display: none;
+        }
+        
+        .total-price-chart-container.active {
+            display: block;
+        }
+        
+        .total-chart-interval-tabs {
+            display: flex;
+            margin-bottom: 15px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .total-chart-interval-tab {
+            flex: 1;
+            padding: 8px 12px;
+            cursor: pointer;
+            border: none;
+            background: #f8f9fa;
+            font-size: 12px;
+            transition: all 0.2s ease;
+            text-align: center;
+        }
+        
+        .total-chart-interval-tab:hover {
+            background: #e9ecef;
+        }
+        
+        .total-chart-interval-tab.active {
+            background: #e74c3c;
+            color: white;
+        }
+        
+        .controls {
+            padding: 15px;
+            background: white;
+            border-bottom: 1px solid #eee;
+            display: grid;
+            grid-template-columns: 2fr 1fr 1fr 1fr 1fr auto;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        .search-box, .filter-select {
+            padding: 8px 10px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 12px;
+            transition: border-color 0.3s ease;
+        }
+        
+        .search-box:focus, .filter-select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.1);
+        }
+        
+        .refresh-btn {
+            padding: 8px 12px;
+            background: #28a745;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background 0.3s ease;
+            font-size: 12px;
+        }
+        
+        .refresh-btn:hover {
+            background: #218838;
+        }
+        
+        .table-container {
+            overflow-x: auto;
+            max-height: 550px;
+            overflow-y: auto;
+            background: white;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+        }
+        
+        th {
+            background: #2c3e50;
+            color: white;
+            padding: 10px 6px;
+            text-align: left;
+            position: sticky;
+            top: 0;
+            cursor: pointer;
+            user-select: none;
+            font-weight: 600;
+            z-index: 10;
+            font-size: 11px;
+        }
+        
+        th:hover {
+            background: #34495e;
+        }
+        
+        td {
+            padding: 8px 6px;
+            border-bottom: 1px solid #eee;
+            vertical-align: middle;
+        }
+        
+        tr:hover {
+            background-color: rgba(102, 126, 234, 0.08);
+        }
+        
+        tr.selected-a {
+            background-color: rgba(40, 167, 69, 0.15);
+        }
+        
+        tr.selected-b {
+            background-color: rgba(255, 193, 7, 0.15);
+        }
+        
+        .item-image {
+            width: 28px;
+            height: 28px;
+            object-fit: contain;
+            border-radius: 3px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            cursor: pointer;
+            transition: transform 0.2s ease;
+        }
+        
+        .item-image:hover {
+            transform: scale(1.1);
+        }
+        
+        .item-name {
+            font-weight: 600;
+            color: #2c3e50;
+            font-size: 11px;
+        }
+        
+        .price {
+            font-weight: bold;
+            color: #28a745;
+            text-align: right;
+            font-size: 11px;
+        }
+        
+        .price.high {
+            color: #dc3545;
+        }
+        
+        .price.medium {
+            color: #ffc107;
+        }
+        
+        .job-badge {
+            padding: 1px 4px;
+            border-radius: 6px;
+            font-size: 8px;
+            font-weight: bold;
+            color: white;
+            display: inline-block;
+            margin: 1px;
+        }
+        
+        .job-warrior { background: #dc3545; }
+        .job-magician { background: #007bff; }
+        .job-bowman { background: #28a745; }
+        .job-thief { background: #6c757d; }
+        .job-pirate { background: #fd7e14; }
+        
+        .set-badge {
+            padding: 2px 4px;
+            border-radius: 8px;
+            font-size: 8px;
+            font-weight: bold;
+            background: #6f42c1;
+            color: white;
+            margin-left: 3px;
+        }
+        
+        .select-buttons {
+            display: flex;
+            gap: 3px;
+        }
+        
+        .select-btn {
+            padding: 3px 6px;
+            border: 1px solid;
+            background: white;
+            cursor: pointer;
+            border-radius: 3px;
+            font-size: 10px;
+            font-weight: bold;
+            transition: all 0.3s ease;
+        }
+        
+        .select-btn.a {
+            border-color: #28a745;
+            color: #28a745;
+        }
+        
+        .select-btn.a:hover, .select-btn.a.selected {
+            background: #28a745;
+            color: white;
+        }
+        
+        .select-btn.b {
+            border-color: #ffc107;
+            color: #f57c00;
+        }
+        
+        .select-btn.b:hover, .select-btn.b.selected {
+            background: #ffc107;
+            color: white;
+        }
+        
+        /* チャート関連のCSS（30分毎データ対応） */
+        .price-chart-tooltip {
+            position: absolute;
+            background: white;
+            border: 2px solid #2c3e50;
+            border-radius: 8px;
+            padding: 15px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            z-index: 1500;
+            display: none;
+            width: 320px;
+            height: 220px;
+            pointer-events: none;
+        }
+        
+        .chart-interval-tabs {
+            display: flex;
+            margin-bottom: 10px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .chart-interval-tab {
+            flex: 1;
+            padding: 5px 8px;
+            cursor: pointer;
+            border: none;
+            background: #f8f9fa;
+            font-size: 10px;
+            transition: all 0.2s ease;
+            pointer-events: auto;
+        }
+        
+        .chart-interval-tab:hover {
+            background: #e9ecef;
+        }
+        
+        .chart-interval-tab.active {
+            background: #2c3e50;
+            color: white;
+        }
+        
+        .comparison-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            z-index: 2000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .comparison-chart-container {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 900px;
+            height: 700px;
+            position: relative;
+        }
+        
+        .comparison-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        
+        .close-btn {
+            background: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        
+        /* 詳細比較オプション */
+        .comparison-options {
+            margin-bottom: 15px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 5px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+        
+        .comparison-option {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .comparison-option input[type="checkbox"] {
+            transform: scale(1.2);
+        }
+        
+        .comparison-option label {
+            font-size: 12px;
+            color: #495057;
+            cursor: pointer;
+        }
+        
+        /* サイドバー */
+        .sidebar {
+            position: fixed;
+            right: 0;
+            top: 0;
+            width: 330px;
+            height: 100vh;
+            background: white;
+            border-left: 2px solid #dee2e6;
+            display: flex;
+            flex-direction: column;
+            z-index: 1000;
+        }
+        
+        .sidebar-header {
+            background: #2c3e50;
+            color: white;
+            padding: 12px;
+            font-weight: bold;
+            text-align: center;
+            font-size: 14px;
+        }
+        
+        .selection-tabs {
+            display: flex;
+            border-bottom: 1px solid #dee2e6;
+        }
+        
+        .tab-btn {
+            flex: 1;
+            padding: 10px;
+            border: none;
+            background: #e9ecef;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background 0.3s ease;
+            font-size: 12px;
+        }
+        
+        .tab-btn.active.a {
+            background: #28a745;
+            color: white;
+        }
+        
+        .tab-btn.active.b {
+            background: #ffc107;
+            color: white;
+        }
+        
+        .selection-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px;
+            display: none;
+        }
+        
+        .selection-content.active {
+            display: block;
+        }
+        
+        .selected-item {
+            display: flex;
+            align-items: center;
+            padding: 6px;
+            margin-bottom: 6px;
+            background: #f8f9fa;
+            border-radius: 4px;
+            border-left: 3px solid;
+            font-size: 10px;
+        }
+        
+        .selected-item.a {
+            border-color: #28a745;
+        }
+        
+        .selected-item.b {
+            border-color: #ffc107;
+        }
+        
+        .selected-item img {
+            width: 20px;
+            height: 20px;
+            margin-right: 6px;
+        }
+        
+        .selected-item-info {
+            flex: 1;
+        }
+        
+        .selected-item-name {
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 1px;
+            line-height: 1.2;
+        }
+        
+        .selected-item-price {
+            color: #28a745;
+            font-weight: bold;
+        }
+        
+        .remove-btn {
+            background: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 2px;
+            padding: 2px 4px;
+            cursor: pointer;
+            font-size: 9px;
+        }
+        
+        .total-section {
+            border-top: 2px solid #dee2e6;
+            padding: 12px;
+            background: #f8f9fa;
+        }
+        
+        .total-price {
+            font-size: 1rem;
+            font-weight: bold;
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 6px;
+        }
+        
+        .control-btn {
+            width: 100%;
+            padding: 6px;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            font-weight: bold;
+            margin-bottom: 4px;
+            font-size: 11px;
+        }
+        
+        .clear-btn {
+            background: #dc3545;
+            color: white;
+        }
+        
+        .clear-btn:hover {
+            background: #c82333;
+        }
+        
+        .compare-btn {
+            background: #17a2b8;
+            color: white;
+        }
+        
+        .compare-btn:hover {
+            background: #138496;
+        }
+        
+        .comparison-section {
+            margin-top: 8px;
+            padding: 8px;
+            background: #e9ecef;
+            border-radius: 3px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        
+        .comparison-title {
+            font-weight: bold;
+            font-size: 13px;
+            margin-bottom: 8px;
+            color: #495057;
+            text-align: center;
+        }
+        
+        .comparison-item {
+            font-size: 14px;
+            margin-bottom: 8px;
+            padding: 8px 10px;
+            background: white;
+            border-radius: 4px;
+            line-height: 1.5;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 30px;
+            font-size: 1rem;
+            color: #6c757d;
+        }
+        
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 12px;
+            border-radius: 4px;
+            margin: 15px;
+            font-size: 12px;
+        }
+        
+        @media (max-width: 1200px) {
+            .main-content {
+                margin-right: 0;
+            }
+            
+            .sidebar {
+                display: none;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .controls {
+                grid-template-columns: 1fr;
+            }
+            
+            .header h1 {
+                font-size: 1.6rem;
+            }
+            
+            .stats {
+                grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="main-content">
+            <div class="header">
+                <h1>🍁 MapleStory装备价格一览</h1>
+                <p>30分钟价格追踪系统（聚合图表支持） - 装备道具价格信息</p>
+            </div>
+            
+            <div class="price-update-notice">
+                📊 每30分钟收集数据，每1小时/12小时/24小时聚合并显示图表
+            </div>
+            
+            <div class="stats" id="stats">
+                <div class="stat-item">
+                    <div class="stat-number" id="totalItems">-</div>
+                    <div class="stat-label">总道具数</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number" id="avgPrice">-</div>
+                    <div class="stat-label">平均价格</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number" id="maxPrice">-</div>
+                    <div class="stat-label">最高价格</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number" id="setCount">-</div>
+                    <div class="stat-label">套装装备数</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number" id="updateTime">-</div>
+                    <div class="stat-label">最后更新</div>
+                </div>
+            </div>
+            
+            <!-- 総価格チャートセクション（30分毎データ集約対応） -->
+            <div class="total-price-chart-section">
+                <div class="total-price-chart-header">
+                    <div class="total-price-chart-title">
+                        📊 全道具价格走势（30分钟数据聚合）
+                        <span id="totalPriceDisplay" style="color: #e74c3c; font-size: 0.9rem;"></span>
+                    </div>
+                    <button id="toggleTotalChart" class="chart-toggle-btn">📈 图表显示</button>
+                </div>
+                
+                <div id="totalPriceChartContainer" class="total-price-chart-container">
+                    <div class="total-chart-interval-tabs">
+                        <button class="total-chart-interval-tab active" data-interval="1hour">1周（每小时聚合）</button>
+                        <button class="total-chart-interval-tab" data-interval="12hour">1个月（每12小时聚合）</button>
+                        <button class="total-chart-interval-tab" data-interval="1day">1年（每日聚合）</button>
+                    </div>
+                    <canvas id="totalPriceChart" width="800" height="280"></canvas>
+                </div>
+            </div>
+            
+            <div class="controls">
+                <input type="text" id="searchInput" class="search-box" placeholder="🔍 按道具名称搜索...">
+                <select id="categoryFilter" class="filter-select">
+                    <option value="">所有类别</option>
+                </select>
+                <select id="jobFilter" class="filter-select">
+                    <option value="">所有职业</option>
+                    <option value="Warrior">战士</option>
+                    <option value="Magician">法师</option>
+                    <option value="Bowman">弓手</option>
+                    <option value="Thief">盗贼</option>
+                    <option value="Pirate">海盗</option>
+                </select>
+                <select id="setFilter" class="filter-select">
+                    <option value="">所有套装</option>
+                </select>
+                <select id="priceFilter" class="filter-select">
+                    <option value="">所有价格区间</option>
+                    <option value="0-500000">50万NESO以下</option>
+                    <option value="500000-1000000">50万-100万NESO</option>
+                    <option value="1000000-5000000">100万-500万NESO</option>
+                    <option value="5000000-10000000">500万-1000万NESO</option>
+                    <option value="10000000-999999999">1000万NESO以上</option>
+                </select>
+                <button id="refreshBtn" class="refresh-btn">🔄 刷新</button>
+            </div>
+            
+            <div class="table-container">
+                <table id="equipmentTable">
+                    <thead>
+                        <tr>
+                            <th onclick="sortTable('image')">图像</th>
+                            <th onclick="sortTable('name')">道具名称 ↕</th>
+                            <th onclick="sortTable('price')">价格 ↕</th>
+                            <th onclick="sortTable('category')">类别 ↕</th>
+                            <th onclick="sortTable('job')">职业 ↕</th>
+                            <th onclick="sortTable('level')">等级 ↕</th>
+                            <th onclick="sortTable('set')">套装 ↕</th>
+                            <th>选择</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody">
+                        <!-- データは動的に生成 -->
+                    </tbody>
+                </table>
+            </div>
+            
+            <div id="loadingIndicator" class="loading" style="display: none;">
+                正在加载数据...
+            </div>
+            
+            <div id="errorMessage" class="error" style="display: none;"></div>
+        </div>
+        
+        <!-- A/B选择对应侧边栏 -->
+        <div class="sidebar">
+            <div class="sidebar-header">
+                装备套装比较系统
+            </div>
+            <div class="selection-tabs">
+                <button class="tab-btn a active" onclick="switchTab('a')">套装A</button>
+                <button class="tab-btn b" onclick="switchTab('b')">套装B</button>
+            </div>
+            
+            <div class="selection-content a active" id="selectionA">
+                <!-- 套装A的道具 -->
+            </div>
+            
+            <div class="selection-content b" id="selectionB">
+                <!-- 套装B的道具 -->
+            </div>
+            
+            <div class="total-section">
+                <div class="total-price" id="totalPriceA">套装A: 0 NESO</div>
+                <div class="total-price" id="totalPriceB">套装B: 0 NESO</div>
+                <button class="control-btn clear-btn" onclick="clearSet('a')">清空套装A</button>
+                <button class="control-btn clear-btn" onclick="clearSet('b')">清空套装B</button>
+                <button class="control-btn compare-btn" onclick="compareAllSets()">详细比较</button>
+                <div class="comparison-section" id="comparisonSection" style="display: none;">
+                    <div class="comparison-title">🆚 套装比较结果</div>
+                    <div id="comparisonList"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 图表用元素 -->
+    <div id="priceChartTooltip" class="price-chart-tooltip" style="display: none;">
+        <div class="chart-interval-tabs">
+            <button class="chart-interval-tab active" data-interval="1hour">1周（每小时）</button>
+            <button class="chart-interval-tab" data-interval="12hour">1个月（每12小时）</button>
+            <button class="chart-interval-tab" data-interval="1day">1年（每日）</button>
+        </div>
+        <canvas id="miniChart" width="290" height="160"></canvas>
+    </div>
+    
+    <div id="comparisonOverlay" class="comparison-overlay" style="display: none;">
+        <div class="comparison-chart-container">
+            <div class="comparison-header">
+                <h3>📈 价格比较图表（30分钟数据聚合）</h3>
+                <button onclick="closeComparison()" class="close-btn">×</button>
+            </div>
+            
+            <!-- 详细比较选项 -->
+            <div class="comparison-options">
+                <div class="comparison-option">
+                    <input type="checkbox" id="dualAxisMode" onchange="chartManager.toggleDualAxisMode()">
+                    <label for="dualAxisMode">分离纵轴并调整倍率 (用于价格差异较大的道具比较)</label>
+                </div>
+                <div class="comparison-option">
+                    <input type="checkbox" id="includeMarketAverage" onchange="chartManager.toggleMarketAverage()">
+                    <label for="includeMarketAverage">附加显示市场平均价格 (与全道具平均值比较)</label>
+                </div>
+            </div>
+            
+            <div class="chart-interval-tabs">
+                <button class="chart-interval-tab active" data-interval="1hour">1周数据（每小时聚合）</button>
+                <button class="chart-interval-tab" data-interval="12hour">1个月数据（每12小时聚合）</button>
+                <button class="chart-interval-tab" data-interval="1day">1年数据（每日聚合）</button>
+            </div>
+            <canvas id="comparisonChart" width="860" height="540"></canvas>
+        </div>
+    </div>
+    <script>
+        // 30分毎データ集約対応のMapleStory価格追跡システム
+        class MapleStoryPriceTracker {
+            constructor() {
+                this.rawData = {};
+                this.filteredData = [];
+                this.selectedItemsA = new Map();
+                this.selectedItemsB = new Map();
+                this.currentPage = 1;
+                this.itemsPerPage = 50;
+                this.sortField = 'name';
+                this.sortDirection = 'asc';
+                this.currentTab = 'a';
+                this.memoryCache = new Map();
+                this.cacheTimeout = 1800000;
+                this.init();
+            }
+            
+            async init() {
+                try {
+                    this.showLoading(true);
+                    await this.loadData();
+                    this.setupEventListeners();
+                    this.generateFilters();
+                    this.applyFilters();
+                    this.updateStats();
+                    this.renderTable();
+                    this.showLoading(false);
+                } catch (error) {
+                    this.showError('システムの初期化に失敗しました: ' + error.message);
+                }
+            }
+            
+            safeGetCache(key) {
+                try {
+                    const cached = localStorage.getItem(key);
+                    if (cached) return cached;
+                } catch (error) {
+                    console.warn('localStorage access denied, using memory cache');
+                }
+                const cacheEntry = this.memoryCache.get(key);
+                if (cacheEntry && Date.now() - cacheEntry.timestamp < this.cacheTimeout) {
+                    return cacheEntry.data;
+                }
+                return null;
+            }
+            
+            safeSetCache(key, value) {
+                try {
+                    localStorage.setItem(key, value);
+                } catch (error) {
+                    console.warn('localStorage access denied, using memory cache');
+                }
+                this.memoryCache.set(key, { data: value, timestamp: Date.now() });
+            }
+            
+            async loadData() {
+                const cached = this.safeGetCache('equipmentDataCache');
+                const cacheTime = this.safeGetCache('equipmentDataCacheTime');
+                
+                if (cached && cacheTime && Date.now() - parseInt(cacheTime) < this.cacheTimeout) {
+                    try {
+                        this.rawData = JSON.parse(cached);
+                        this.updateTotalPriceDisplay();
+                        return;
+                    } catch (error) {
+                        console.warn('Cache parse error, fetching fresh data');
+                    }
+                }
+                
+                try {
+                    const response = await fetch('./data/equipment_prices.json?v=' + Date.now());
+                    if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    
+                    this.rawData = await response.json();
+                    
+                    this.safeSetCache('equipmentDataCache', JSON.stringify(this.rawData));
+                    this.safeSetCache('equipmentDataCacheTime', Date.now().toString());
+                    this.updateTotalPriceDisplay();
+                } catch (error) {
+                    console.warn('Data fetch failed, using fallback data');
+                    this.rawData = this.getFallbackData();
+                    this.updateTotalPriceDisplay();
+                }
+            }
+            
+            updateTotalPriceDisplay() {
+                try {
+                    const prices = Object.values(this.rawData)
+                        .map(item => this.parsePrice(item.item_price))
+                        .filter(p => p > 0);
+                    
+                    const totalPrice = prices.reduce((sum, price) => sum + price, 0);
+                    const displayElement = document.getElementById('totalPriceDisplay');
+                    
+                    if (displayElement) {
+                        displayElement.textContent = `(${this.formatPriceShort(totalPrice)} NESO)`;
+                    }
+                } catch (error) {
+                    console.warn('Total price display update error:', error);
+                }
+            }
+            
+            getFallbackData() {
+                return {
+                    "1382285": {
+                        "item_name": "Unchained Staff", 
+                        "image_url": "https://api-static.msu.io/itemimages/icon/1382285.png", 
+                        "item_id": "1382285", 
+                        "item_price": "2,795,000", 
+                        "status": "价格已更新", 
+                        "categories": ["Weapon", "One-handed Weapon", "Staff"], 
+                        "required_level": "120", 
+                        "required_jobs": ["Magician"],
+                        "last_updated": new Date().toISOString()
+                    },
+                    "1352232": {
+                        "item_name": "Rusty Book", 
+                        "image_url": "https://api-static.msu.io/itemimages/icon/1352232.png", 
+                        "item_id": "1352232", 
+                        "item_price": "1,480,000", 
+                        "status": "价格已更新", 
+                        "categories": ["Weapon", "Secondary Weapon", "Magic Book"], 
+                        "required_level": "100", 
+                        "required_jobs": ["Magician"],
+                        "last_updated": new Date().toISOString()
+                    },
+                    "1462285": {
+                        "item_name": "Eagle Eye Bow", 
+                        "image_url": "https://api-static.msu.io/itemimages/icon/1462285.png", 
+                        "item_id": "1462285", 
+                        "item_price": "3,200,000", 
+                        "status": "价格已更新", 
+                        "categories": ["Weapon", "Two-handed Weapon", "Bow"], 
+                        "required_level": "130", 
+                        "required_jobs": ["Bowman"],
+                        "last_updated": new Date().toISOString()
+                    }
+                };
+            }
+            
+            setupEventListeners() {
+                try {
+                    document.getElementById('searchInput').addEventListener('input', 
+                        this.debounce(() => this.applyFilters(), 300));
+                    document.getElementById('categoryFilter').addEventListener('change', () => this.applyFilters());
+                    document.getElementById('jobFilter').addEventListener('change', () => this.applyFilters());
+                    document.getElementById('setFilter').addEventListener('change', () => this.applyFilters());
+                    document.getElementById('priceFilter').addEventListener('change', () => this.applyFilters());
+                    document.getElementById('refreshBtn').addEventListener('click', () => this.refreshData());
+                } catch (error) {
+                    console.warn('Event listener setup error:', error);
+                }
+            }
+            
+            debounce(func, wait) {
+                let timeout;
+                return function executedFunction(...args) {
+                    const later = () => {
+                        clearTimeout(timeout);
+                        func(...args);
+                    };
+                    clearTimeout(timeout);
+                    timeout = setTimeout(later, wait);
+                };
+            }
+            
+            parsePrice(priceStr) {
+                try {
+                    if (!priceStr || priceStr === '未获取' || priceStr === 'undefined') return 0;
+                    if (typeof priceStr === 'number') return priceStr;
+                    return parseInt(String(priceStr).replace(/[,]/g, '')) || 0;
+                } catch (error) {
+                    return 0;
+                }
+            }
+            
+            formatPrice(price) {
+                try {
+                    if (!price || price === 0) return '未获取';
+                    return parseInt(price).toLocaleString() + ' NESO';
+                } catch (error) {
+                    return '未获取';
+                }
+            }
+            
+            formatPriceShort(price) {
+                try {
+                    if (!price || price === 0) return '未获取';
+                    
+                    const numPrice = parseInt(price);
+                    if (numPrice >= 1000000) {
+                        const millions = Math.round((numPrice / 1000000) * 100) / 100;
+                        return millions + 'M';
+                    } else if (numPrice >= 1000) {
+                        const thousands = Math.round((numPrice / 1000) * 100) / 100;
+                        return thousands + 'K';
+                    } else {
+                        return numPrice.toString();
+                    }
+                } catch (error) {
+                    return '未获取';
+                }
+            }
+            
+            generateFilters() {
+                try {
+                    const categories = new Set();
+                    const setNames = new Set();
+                    
+                    Object.values(this.rawData).forEach(item => {
+                        try {
+                            if (item && item.categories && Array.isArray(item.categories) && item.categories.length > 0) {
+                                const specificCategory = item.categories[item.categories.length - 1];
+                                if (specificCategory && typeof specificCategory === 'string' && specificCategory.trim() !== '') {
+                                    const displayCategory = this.getCategoryDisplayName(specificCategory);
+                                    categories.add(displayCategory);
+                                }
+                            }
+                            
+                            if (item && item.item_name && typeof item.item_name === 'string') {
+                                const setName = this.detectSetName(item.item_name);
+                                if (setName) {
+                                    setNames.add(setName);
+                                }
+                            }
+                        } catch (itemError) {
+                            // 错误处理
+                        }
+                    });
+                    
+                    this.populateFilter('categoryFilter', categories, '');
+                    this.populateFilter('setFilter', setNames, ' Set');
+                } catch (error) {
+                    console.warn('Filter generation error:', error);
+                }
+            }
+            
+            populateFilter(filterId, items, suffix = '') {
+                try {
+                    const filter = document.getElementById(filterId);
+                    if (!filter) return;
+                    
+                    while (filter.children.length > 1) {
+                        filter.removeChild(filter.lastChild);
+                    }
+                    
+                    Array.from(items).sort().forEach(item => {
+                        const option = document.createElement('option');
+                        option.value = item;
+                        option.textContent = item + suffix;
+                        filter.appendChild(option);
+                    });
+                } catch (error) {
+                    console.warn('Filter population error:', error);
+                }
+            }
+            
+            getCategoryDisplayName(category) {
+                try {
+                    const categoryMappings = {
+                        'Magic Book': 'Secondary Weapon',
+                        'Rosary': 'Secondary Weapon',
+                        'Medal': 'Secondary Weapon',
+                        'Iron Chain': 'Secondary Weapon',
+                        'Arrow Fletching': 'Secondary Weapon',
+                        'Bow Thimble': 'Secondary Weapon',
+                        'Charm': 'Secondary Weapon',
+                        'Dagger Scabbard': 'Secondary Weapon',
+                        'Far Sight': 'Secondary Weapon',
+                        'Wrist Band': 'Secondary Weapon'
+                    };
+                    
+                    return categoryMappings[category] || category;
+                } catch (error) {
+                    return category || 'Unknown';
+                }
+            }
+            
+            detectSetName(itemName) {
+                try {
+                    if (!itemName || typeof itemName !== 'string') {
+                        return null;
+                    }
+                    
+                    const setPatterns = [
+                        /^(Eagle Eye)\s/i,
+                        /^(Trixter)\s/i,
+                        /^(Royal)\s(?!Von Leon|Black Metal)/i,
+                        /^(Fafnir)\s/i,
+                        /^(Necromancer)\s/i,
+                        /^(Necro)\s/i,
+                        /^(Royal Von Leon)\s/i,
+                        /^(Unchained)\s/i,
+                        /^(Lionheart)\s/i,
+                        /^(Dragon Tail)\s/i,
+                        /^(Falcon Wing)\s/i,
+                        /^(Shark Tooth)\s/i,
+                        /^(Raven Horn)\s/i,
+                        /^(Neophyte)\s/i,
+                        /(Bean)\s/i
+                    ];
+                    
+                    for (const pattern of setPatterns) {
+                        const match = itemName.match(pattern);
+                        if (match && match[1]) {
+                            const setName = match[1];
+                            
+                            if (['Eagle Eye', 'Trixter', 'Royal', 'Fafnir'].includes(setName)) {
+                                return 'Chaos Abyss';
+                            }
+                            if (['Necromancer', 'Necro'].includes(setName)) {
+                                return 'Necro';
+                            }
+                            
+                            return setName;
+                        }
+                    }
+                    return null;
+                } catch (error) {
+                    return null;
+                }
+            }
+            
+            applyFilters() {
+                try {
+                    const searchTerm = document.getElementById('searchInput')?.value?.toLowerCase() || '';
+                    const category = document.getElementById('categoryFilter')?.value || '';
+                    const job = document.getElementById('jobFilter')?.value || '';
+                    const set = document.getElementById('setFilter')?.value || '';
+                    const priceRange = document.getElementById('priceFilter')?.value || '';
+                    
+                    this.filteredData = Object.values(this.rawData).filter(item => {
+                        try {
+                            if (!item || !item.item_name || typeof item.item_name !== 'string' || item.item_name.trim() === '') {
+                                return false;
+                            }
+                            
+                            if (searchTerm && !item.item_name.toLowerCase().includes(searchTerm)) {
+                                return false;
+                            }
+                            
+                            if (category) {
+                                if (category === 'Secondary Weapon') {
+                                    const subWeaponCategories = [
+                                        'Magic Book', 'Rosary', 'Medal', 'Iron Chain', 
+                                        'Arrow Fletching', 'Bow Thimble', 'Charm', 
+                                        'Dagger Scabbard', 'Far Sight', 'Wrist Band'
+                                    ];
+                                    
+                                    if (!item.categories || !Array.isArray(item.categories) || !item.categories.some(cat => 
+                                        subWeaponCategories.includes(cat) || cat === 'Secondary Weapon'
+                                    )) {
+                                        return false;
+                                    }
+                                } else {
+                                    if (!item.categories || !Array.isArray(item.categories) || !item.categories.includes(category)) {
+                                        return false;
+                                    }
+                                }
+                            }
+                            
+                            if (job) {
+                                if (!item.required_jobs || !Array.isArray(item.required_jobs) || !item.required_jobs.includes(job)) {
+                                    return false;
+                                }
+                            }
+                            
+                            if (set) {
+                                const itemSetName = this.detectSetName(item.item_name);
+                                if (!itemSetName || !itemSetName.includes(set)) {
+                                    return false;
+                                }
+                            }
+                            
+                            if (priceRange) {
+                                const price = this.parsePrice(item.item_price);
+                                const [min, max] = priceRange.split('-').map(Number);
+                                if (price < min || price > max) return false;
+                            }
+                            
+                            return true;
+                        } catch (itemError) {
+                            return false;
+                        }
+                    });
+                    
+                    this.currentPage = 1;
+                    this.updateStats();
+                    this.renderTable();
+                } catch (error) {
+                    console.warn('Filter application error:', error);
+                }
+            }
+            
+            updateStats() {
+                try {
+                    const prices = this.filteredData
+                        .map(item => this.parsePrice(item.item_price))
+                        .filter(p => p > 0);
+                    
+                    const total = this.filteredData.length;
+                    const avg = prices.length > 0 ? Math.round(prices.reduce((a, b) => a + b, 0) / prices.length) : 0;
+                    const max = prices.length > 0 ? Math.max(...prices) : 0;
+                    const setCount = this.filteredData.filter(item => this.detectSetName(item.item_name)).length;
+                    
+                    document.getElementById('totalItems').textContent = total.toLocaleString();
+                    document.getElementById('avgPrice').textContent = this.formatPrice(avg);
+                    document.getElementById('maxPrice').textContent = this.formatPrice(max);
+                    document.getElementById('setCount').textContent = setCount.toLocaleString();
+                    
+                    this.displayLastUpdateTime();
+                } catch (error) {
+                    console.warn('Stats update error:', error);
+                }
+            }
+            
+            displayLastUpdateTime() {
+                try {
+                    let latestUpdateTime = null;
+                    
+                    Object.values(this.rawData).forEach(item => {
+                        try {
+                            if (item && item.last_updated) {
+                                const updateTime = new Date(item.last_updated);
+                                if (!isNaN(updateTime.getTime()) && (!latestUpdateTime || updateTime > latestUpdateTime)) {
+                                    latestUpdateTime = updateTime;
+                                }
+                            }
+                        } catch (timeError) {
+                            // 错误处理
+                        }
+                    });
+                    
+                    const updateElement = document.getElementById('updateTime');
+                    if (updateElement) {
+                        if (latestUpdateTime) {
+                            const timeString = latestUpdateTime.toLocaleTimeString('zh-CN', {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                                second: '2-digit',
+                                timeZone: 'Asia/Shanghai'
+                            });
+                            updateElement.textContent = timeString;
+                        } else {
+                            updateElement.textContent = new Date().toLocaleTimeString('zh-CN');
+                        }
+                    }
+                } catch (error) {
+                    try {
+                        document.getElementById('updateTime').textContent = new Date().toLocaleTimeString('zh-CN');
+                    } catch (fallbackError) {
+                        // 如果回退也失败则忽略
+                    }
+                }
+            }
+            
+            renderTable() {
+                try {
+                    const start = (this.currentPage - 1) * this.itemsPerPage;
+                    const end = start + this.itemsPerPage;
+                    const pageData = this.filteredData.slice(start, end);
+                    
+                    const tableBody = document.getElementById('tableBody');
+                    if (!tableBody) return;
+                    
+                    tableBody.innerHTML = '';
+                    
+                    pageData.forEach(item => {
+                        try {
+                            if (!item || !item.item_name) return;
+                            
+                            const price = this.parsePrice(item.item_price);
+                            const setName = this.detectSetName(item.item_name);
+                            const isSelectedA = this.selectedItemsA.has(item.item_id);
+                            const isSelectedB = this.selectedItemsB.has(item.item_id);
+                            
+                            const jobBadges = item.required_jobs && Array.isArray(item.required_jobs) ? 
+                                item.required_jobs.map(job => 
+                                    `<span class="job-badge job-${job.toLowerCase()}">${job}</span>`
+                                ).join('') : '';
+                            
+                            const setBadge = setName ? `<span class="set-badge">${setName}</span>` : '';
+                            const categoryDisplay = item.categories && Array.isArray(item.categories) && item.categories.length > 0 ? 
+                                this.getCategoryDisplayName(item.categories[item.categories.length - 1]) : '-';
+                            
+                            let rowClass = '';
+                            if (isSelectedA) rowClass = 'selected-a';
+                            if (isSelectedB) rowClass = 'selected-b';
+                            
+                            const row = tableBody.insertRow();
+                            row.className = rowClass;
+                            row.innerHTML = `
+                                <td><img src="${item.image_url || ''}" alt="${item.item_name}" class="item-image" loading="lazy" data-item-id="${item.item_id}" onerror="this.style.display='none'"></td>
+                                <td class="item-name">${item.item_name}${setBadge}</td>
+                                <td class="price ${this.getPriceClass(price)}">${this.formatPrice(price)}</td>
+                                <td>${categoryDisplay}</td>
+                                <td>${jobBadges}</td>
+                                <td>${item.required_level || '-'}</td>
+                                <td>${setName || '-'}</td>
+                                <td>
+                                    <div class="select-buttons">
+                                        <button class="select-btn a ${isSelectedA ? 'selected' : ''}" onclick="tracker.toggleItem('${item.item_id}', 'a')">A</button>
+                                        <button class="select-btn b ${isSelectedB ? 'selected' : ''}" onclick="tracker.toggleItem('${item.item_id}', 'b')">B</button>
+                                    </div>
+                                </td>
+                            `;
+                        } catch (rowError) {
+                            console.warn('Row rendering error:', rowError);
+                        }
+                    });
+                } catch (error) {
+                    console.warn('Table rendering error:', error);
+                }
+            }
+            
+            getPriceClass(price) {
+                try {
+                    const numPrice = parseInt(price);
+                    if (numPrice >= 10000000) return 'high';
+                    if (numPrice >= 1000000) return 'medium';
+                    return '';
+                } catch (error) {
+                    return '';
+                }
+            }
+            
+            toggleItem(itemId, set) {
+                try {
+                    const item = this.rawData[itemId];
+                    if (!item) return;
+                    
+                    const selectedMap = set === 'a' ? this.selectedItemsA : this.selectedItemsB;
+                    const otherMap = set === 'a' ? this.selectedItemsB : this.selectedItemsA;
+                    
+                    otherMap.delete(itemId);
+                    
+                    if (selectedMap.has(itemId)) {
+                        selectedMap.delete(itemId);
+                    } else {
+                        selectedMap.set(itemId, item);
+                    }
+                    
+                    this.updateSelectedItemsDisplay();
+                    this.renderTable();
+                } catch (error) {
+                    console.warn('Item toggle error:', error);
+                }
+            }
+            
+            updateSelectedItemsDisplay() {
+                try {
+                    this.updateSetDisplay('a', this.selectedItemsA);
+                    this.updateSetDisplay('b', this.selectedItemsB);
+                    this.updateTotalPrices();
+                } catch (error) {
+                    console.warn('Selected items display error:', error);
+                }
+            }
+            
+            updateSetDisplay(set, selectedMap) {
+                try {
+                    const container = document.getElementById(`selection${set.toUpperCase()}`);
+                    if (!container) return;
+                    
+                    container.innerHTML = '';
+                    
+                    selectedMap.forEach((item, itemId) => {
+                        try {
+                            const price = this.parsePrice(item.item_price);
+                            
+                            const itemDiv = document.createElement('div');
+                            itemDiv.className = `selected-item ${set}`;
+                            itemDiv.innerHTML = `
+                                <img src="${item.image_url || ''}" alt="${item.item_name}" onerror="this.style.display='none'">
+                                <div class="selected-item-info">
+                                    <div class="selected-item-name">${item.item_name}</div>
+                                    <div class="selected-item-price">${this.formatPriceShort(price)} NESO</div>
+                                </div>
+                                <button class="remove-btn" onclick="tracker.toggleItem('${itemId}', '${set}')">×</button>
+                            `;
+                            container.appendChild(itemDiv);
+                        } catch (itemError) {
+                            console.warn('Set display item error:', itemError);
+                        }
+                    });
+                } catch (error) {
+                    console.warn('Set display error:', error);
+                }
+            }
+            
+            updateTotalPrices() {
+                try {
+                    const totalA = Array.from(this.selectedItemsA.values())
+                        .reduce((sum, item) => sum + this.parsePrice(item.item_price), 0);
+                    const totalB = Array.from(this.selectedItemsB.values())
+                        .reduce((sum, item) => sum + this.parsePrice(item.item_price), 0);
+                    
+                    const elementA = document.getElementById('totalPriceA');
+                    const elementB = document.getElementById('totalPriceB');
+                    
+                    if (elementA) elementA.textContent = `セットA: ${this.formatPriceShort(totalA)} NESO`;
+                    if (elementB) elementB.textContent = `セットB: ${this.formatPriceShort(totalB)} NESO`;
+                } catch (error) {
+                    console.warn('Total price update error:', error);
+                }
+            }
+            
+            sortTable(field) {
+                try {
+                    if (this.sortField === field) {
+                        this.sortDirection = this.sortDirection === 'asc' ? 'desc' : 'asc';
+                    } else {
+                        this.sortField = field;
+                        this.sortDirection = 'asc';
+                    }
+                    
+                    this.filteredData.sort((a, b) => {
+                        try {
+                            let aVal, bVal;
+                            
+                            switch (field) {
+                                case 'name':
+                                    aVal = a.item_name || '';
+                                    bVal = b.item_name || '';
+                                    break;
+                                case 'price':
+                                    aVal = this.parsePrice(a.item_price);
+                                    bVal = this.parsePrice(b.item_price);
+                                    break;
+                                case 'category':
+                                    aVal = a.categories && a.categories.length > 0 ? a.categories[a.categories.length - 1] : '';
+                                    bVal = b.categories && b.categories.length > 0 ? b.categories[b.categories.length - 1] : '';
+                                    break;
+                                case 'job':
+                                    aVal = a.required_jobs ? a.required_jobs.join(' ') : '';
+                                    bVal = b.required_jobs ? b.required_jobs.join(' ') : '';
+                                    break;
+                                case 'level':
+                                    aVal = parseInt(a.required_level) || 0;
+                                    bVal = parseInt(b.required_level) || 0;
+                                    break;
+                                case 'set':
+                                    aVal = this.detectSetName(a.item_name) || '';
+                                    bVal = this.detectSetName(b.item_name) || '';
+                                    break;
+                                default:
+                                    return 0;
+                            }
+                            
+                            if (typeof aVal === 'string') {
+                                return this.sortDirection === 'asc' 
+                                    ? aVal.localeCompare(bVal, 'ja')
+                                    : bVal.localeCompare(aVal, 'ja');
+                            } else {
+                                return this.sortDirection === 'asc' ? aVal - bVal : bVal - aVal;
+                            }
+                        } catch (sortError) {
+                            return 0;
+                        }
+                    });
+                    
+                    this.renderTable();
+                } catch (error) {
+                    console.warn('Sorting error:', error);
+                }
+            }
+            
+            async refreshData() {
+                try {
+                    this.memoryCache.clear();
+                    await this.init();
+                } catch (error) {
+                    console.warn('Data refresh error:', error);
+                }
+            }
+            
+            showLoading(show) {
+                try {
+                    const element = document.getElementById('loadingIndicator');
+                    if (element) {
+                        element.style.display = show ? 'block' : 'none';
+                    }
+                } catch (error) {
+                    console.warn('Loading indicator error:', error);
+                }
+            }
+            
+            showError(message) {
+                try {
+                    const errorDiv = document.getElementById('errorMessage');
+                    if (errorDiv) {
+                        errorDiv.textContent = message;
+                        errorDiv.style.display = 'block';
+                    }
+                    this.showLoading(false);
+                } catch (error) {
+                    console.warn('Error display error:', error);
+                }
+            }
+        }
+
+        // 30分毎データ集約対応のチャート管理クラス
+        class PriceChartManager {
+            constructor() {
+                this.tooltip = null;
+                this.miniChart = null;
+                this.comparisonChart = null;
+                this.totalPriceChart = null;
+                this.currentInterval = '1hour';
+                this.currentTotalInterval = '1hour';
+                this.dualAxisMode = false;
+                this.includeMarketAverage = false;
+                
+                // 30分毎データ集約対応の間隔情報
+                this.intervals = {
+                    '1hour': '1週間分（1時間毎集約）',
+                    '12hour': '1ヶ月分（12時間毎集約）', 
+                    '1day': '1年分（1日毎集約）'
+                };
+                
+                // 30分毎データから集約されたチャート設定
+                this.intervalConfigs = {
+                    '1hour': { 
+                        points: 168,        // 7日 × 24時間 = 168ポイント（30分毎データから1時間毎に集約）
+                        minuteStep: 60,     // 1時間 = 60分
+                        maxTicks: 8,        // 横軸の最大ティック数
+                        timeFormat: 'MM/DD HH:mm',
+                        aggregation: '30分毎データから1時間毎に平均化'
+                    },
+                    '12hour': { 
+                        points: 60,         // 30日 × 2回/日 = 60ポイント（30分毎データから12時間毎に集約）
+                        minuteStep: 720,    // 12時間 = 720分
+                        maxTicks: 15,       // 12時間ごとなので、より多くのティックを表示
+                        timeFormat: 'MM/DD HH:mm',
+                        aggregation: '30分毎データから12時間毎に平均化'
+                    },
+                    '1day': { 
+                        points: 365,        // 365日（30分毎データから1日毎に集約）
+                        minuteStep: 1440,   // 1日 = 1440分
+                        maxTicks: 12,
+                        timeFormat: 'MM/DD',
+                        aggregation: '30分毎データから1日毎に平均化'
+                    }
+                };
+                
+                this.chartDataCache = new Map();
+                this.isInitialized = false;
+                this.initializationAttempts = 0;
+                this.maxInitializationAttempts = 10;
+                
+                this.waitForChartJs();
+            }
+            
+            waitForChartJs() {
+                if (window.chartLoadingState && window.chartLoadingState.loaded && typeof Chart !== 'undefined') {
+                    console.log('Chart.js (UMD) is ready, initializing chart manager...');
+                    this.initialize();
+                    return;
+                }
+                
+                document.addEventListener('chartjsReady', () => {
+                    console.log('Chart.js ready event received, initializing...');
+                    this.initialize();
+                }, { once: true });
+                
+                this.initializationAttempts++;
+                if (this.initializationAttempts < this.maxInitializationAttempts) {
+                    console.log(`Chart.js not ready yet, attempt ${this.initializationAttempts}/${this.maxInitializationAttempts}`);
+                    setTimeout(() => this.waitForChartJs(), 1000);
+                } else {
+                    console.error('Chart.js initialization failed after maximum attempts');
+                }
+            }
+            
+            initialize() {
+                if (this.isInitialized) {
+                    console.log('Chart manager already initialized');
+                    return;
+                }
+                
+                if (typeof Chart === 'undefined') {
+                    console.error('Chart.js still not available during initialization');
+                    return;
+                }
+                
+                this.setupEventListeners();
+                this.setupTotalPriceChart();
+                this.isInitialized = true;
+                console.log('PriceChartManager initialized successfully with Chart.js v' + Chart.version);
+                console.log('30分毎データ集約システム対応完了');
+            }
+            
+            setupEventListeners() {
+                // 既存のホバーイベント
+                document.addEventListener('mouseover', (e) => {
+                    if (e.target.classList.contains('item-image') && this.isInitialized) {
+                        this.showPriceChart(e.target, e.clientX, e.clientY);
+                    }
+                });
+                
+                document.addEventListener('mouseout', (e) => {
+                    if (e.target.classList.contains('item-image')) {
+                        this.hidePriceChart();
+                    }
+                });
+                
+                // 間隔切り替えタブのイベント
+                document.addEventListener('click', (e) => {
+                    if (e.target.classList.contains('chart-interval-tab')) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        this.switchInterval(e.target.dataset.interval, e.target);
+                    } else if (e.target.classList.contains('total-chart-interval-tab')) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        this.switchTotalInterval(e.target.dataset.interval, e.target);
+                    }
+                });
+                
+                // 総価格チャート表示切り替え
+                document.getElementById('toggleTotalChart').addEventListener('click', () => {
+                    this.toggleTotalPriceChart();
+                });
+                
+                console.log('Chart event listeners setup complete (30分毎データ集約対応)');
+            }
+            
+            setupTotalPriceChart() {
+                this.loadTotalPriceChart();
+            }
+            
+            toggleTotalPriceChart() {
+                const container = document.getElementById('totalPriceChartContainer');
+                const button = document.getElementById('toggleTotalChart');
+                
+                if (container.classList.contains('active')) {
+                    container.classList.remove('active');
+                    button.textContent = '📈 チャート表示';
+                } else {
+                    container.classList.add('active');
+                    button.textContent = '📊 チャート非表示';
+                    this.loadTotalPriceChart();
+                }
+            }
+            
+            async loadTotalPriceChart() {
+                if (!this.isInitialized) return;
+                
+                try {
+                    const chartData = await this.fetchTotalPriceChartData(this.currentTotalInterval);
+                    if (chartData) {
+                        this.renderTotalPriceChart(chartData);
+                    }
+                } catch (error) {
+                    console.error('Error loading total price chart:', error);
+                }
+            }
+            
+            async fetchTotalPriceChartData(interval) {
+                const cacheKey = `total_price_${interval}`;
+                
+                if (this.chartDataCache.has(cacheKey)) {
+                    console.log(`Using cached total price data for ${interval}`);
+                    return this.chartDataCache.get(cacheKey);
+                }
+                
+                try {
+                    const url = `./data/price_history/total_price_${interval}.json`;
+                    console.log(`Fetching 30分钟聚合总价格数据 from: ${url}`);
+                    
+                    const response = await fetch(url + '?v=' + Date.now());
+                    
+                    if (!response.ok) {
+                        console.warn(`未找到30分钟聚合总价格数据 for ${interval}, using sample data`);
+                        return this.getSampleTotalPriceChartData(interval);
+                    }
+                    
+                    const chartData = await response.json();
+                    console.log(`30分钟聚合总价格数据 loaded for ${interval}:`, chartData);
+                    
+                    if (!chartData || !chartData.labels || !chartData.datasets || chartData.datasets.length === 0) {
+                        console.warn(`无效的30分钟聚合总价格数据 for ${interval}, using sample data`);
+                        return this.getSampleTotalPriceChartData(interval);
+                    }
+                    
+                    this.chartDataCache.set(cacheKey, chartData);
+                    setTimeout(() => this.chartDataCache.delete(cacheKey), 300000);
+                    
+                    return chartData;
+                    
+                } catch (error) {
+                    console.error(`获取30分钟聚合总价格数据错误 for ${interval}:`, error);
+                    return this.getSampleTotalPriceChartData(interval);
+                }
+            }
+            
+            getSampleTotalPriceChartData(interval) {
+                console.log(`生成示例30分钟聚合总价格数据 for ${interval}`);
+                
+                const baseTotal = 864000000; // 8.64億NESO
+                const baseAvg = 3075967; // 約307万NESO
+                
+                const config = this.intervalConfigs[interval];
+                const now = new Date();
+                const labels = [];
+                const totalData = [];
+                const avgData = [];
+                
+                // 生成从30分钟数据聚合的示例数据
+                for (let i = config.points - 1; i >= 0; i--) {
+                    const time = new Date(now.getTime() - i * config.minuteStep * 60 * 1000);
+                    
+                    let label;
+                    if (config.timeFormat === 'MM/DD') {
+                        label = time.toLocaleDateString('zh-CN', { 
+                            month: '2-digit', 
+                            day: '2-digit' 
+                        });
+                    } else {
+                        label = time.toLocaleDateString('zh-CN', { 
+                            month: '2-digit', 
+                            day: '2-digit' 
+                        }) + ' ' + time.toLocaleTimeString('zh-CN', { 
+                            hour: '2-digit', 
+                            minute: '2-digit' 
+                        });
+                    }
+                    
+                    labels.push(label);
+                    
+                    // 模拟聚合的价格变动（作为30分钟数据的平均值）
+                    const variation = (Math.random() - 0.5) * 0.15; // 缩小到15%的变动范围（聚合效果）
+                    const totalPrice = Math.round(baseTotal * (1 + variation));
+                    const avgPrice = Math.round(baseAvg * (1 + variation * 0.8)); // 平均值更稳定
+                    
+                    totalData.push(totalPrice);
+                    avgData.push(avgPrice);
+                }
+                
+                return {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: `総価格 (${this.intervals[interval]})`,
+                            data: totalData,
+                            borderColor: '#e74c3c',
+                            backgroundColor: 'rgba(231, 76, 60, 0.1)',
+                            borderWidth: 3,
+                            fill: true,
+                            tension: 0.3,
+                            yAxisID: 'y'
+                        },
+                        {
+                            label: `平均価格 (${this.intervals[interval]})`,
+                            data: avgData,
+                            borderColor: '#3498db',
+                            backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                            borderWidth: 2,
+                            fill: false,
+                            tension: 0.3,
+                            yAxisID: 'y1'
+                        }
+                    ]
+                };
+            }
+            
+            renderTotalPriceChart(chartData) {
+                if (typeof Chart === 'undefined') {
+                    console.error('Chart.js not loaded');
+                    return;
+                }
+                
+                const canvas = document.getElementById('totalPriceChart');
+                if (!canvas) {
+                    console.error('Total price chart canvas not found');
+                    return;
+                }
+                
+                const ctx = canvas.getContext('2d');
+                
+                if (this.totalPriceChart) {
+                    this.totalPriceChart.destroy();
+                }
+                
+                try {
+                    const config = this.intervalConfigs[this.currentTotalInterval];
+                    
+                    this.totalPriceChart = new Chart(ctx, {
+                        type: 'line',
+                        data: chartData,
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: {
+                                    position: 'top',
+                                    labels: {
+                                        usePointStyle: true,
+                                        font: { size: 12 }
+                                    }
+                                },
+                                tooltip: {
+                                    mode: 'index',
+                                    intersect: false,
+                                    callbacks: {
+                                        label: function(context) {
+                                            const value = context.parsed.y;
+                                            if (context.datasetIndex === 0) {
+                                                return `${context.dataset.label}: ${(value / 1000000).toFixed(0)}M NESO`;
+                                            } else {
+                                                return `${context.dataset.label}: ${value.toLocaleString()} NESO`;
+                                            }
+                                        },
+                                        afterBody: function() {
+                                            return `数据: ${config.aggregation}`;
+                                        }
+                                    }
+                                }
+                            },
+                            scales: {
+                                x: {
+                                    title: {
+                                        display: true,
+                                        text: `时间轴 (${this.intervals[this.currentTotalInterval]})`
+                                    },
+                                    ticks: {
+                                        font: { size: 10 },
+                                        maxTicksLimit: config.maxTicks
+                                    }
+                                },
+                                y: {
+                                    type: 'linear',
+                                    display: true,
+                                    position: 'left',
+                                    title: {
+                                        display: true,
+                                        text: '总价格 (百万NESO)',
+                                        color: '#e74c3c'
+                                    },
+                                    ticks: {
+                                        callback: function(value) {
+                                            return (value / 1000000).toFixed(0) + 'M';
+                                        },
+                                        color: '#e74c3c'
+                                    },
+                                    grid: {
+                                        drawOnChartArea: false,
+                                    },
+                                },
+                                y1: {
+                                    type: 'linear',
+                                    display: true,
+                                    position: 'right',
+                                    title: {
+                                        display: true,
+                                        text: '平均价格 (NESO)',
+                                        color: '#3498db'
+                                    },
+                                    ticks: {
+                                        callback: function(value) {
+                                            if (value >= 1000000) {
+                                                return (value / 1000000).toFixed(1) + 'M';
+                                            } else if (value >= 1000) {
+                                                return (value / 1000).toFixed(0) + 'K';
+                                            }
+                                            return value.toString();
+                                        },
+                                        color: '#3498db'
+                                    },
+                                    grid: {
+                                        drawOnChartArea: false,
+                                    },
+                                }
+                            },
+                            interaction: {
+                                mode: 'index',
+                                intersect: false
+                            },
+                            animation: {
+                                duration: 500,
+                                easing: 'linear'
+                            }
+                        }
+                    });
+                    
+                    console.log(`30分毎集約総価格チャート rendered with ${chartData.labels.length} data points for ${this.currentTotalInterval}`);
+                    
+                } catch (error) {
+                    console.error('Error rendering 30分毎集約総価格チャート:', error);
+                }
+            }
+            
+            switchTotalInterval(interval, clickedTab) {
+                console.log(`Switching 30分毎集約総価格 interval to: ${interval}`);
+                this.currentTotalInterval = interval;
+                
+                const tabContainer = clickedTab.parentElement;
+                tabContainer.querySelectorAll('.total-chart-interval-tab').forEach(tab => {
+                    tab.classList.toggle('active', tab.dataset.interval === interval);
+                });
+                
+                this.loadTotalPriceChart();
+            }
+            
+            // 個別アイテムの30分毎データ集約対応サンプルデータ
+            getSampleChartData(itemId) {
+                const itemName = tracker?.rawData?.[itemId]?.item_name || 'Unknown Item';
+                const basePrice = tracker?.parsePrice(tracker.rawData?.[itemId]?.item_price) || 1000000;
+                
+                console.log(`Generating sample 30分毎集約データ for ${itemName} (base price: ${basePrice}) with interval ${this.currentInterval}`);
+                
+                const config = this.intervalConfigs[this.currentInterval];
+                const now = new Date();
+                const labels = [];
+                const data = [];
+                
+                // 30分毎データから集約されたサンプルデータを生成
+                for (let i = config.points - 1; i >= 0; i--) {
+                    const time = new Date(now.getTime() - i * config.minuteStep * 60 * 1000);
+                    
+                    let label;
+                    if (config.timeFormat === 'MM/DD') {
+                        label = time.toLocaleDateString('ja-JP', { 
+                            month: '2-digit', 
+                            day: '2-digit' 
+                        });
+                    } else {
+                        label = time.toLocaleDateString('ja-JP', { 
+                            month: '2-digit', 
+                            day: '2-digit' 
+                        }) + ' ' + time.toLocaleTimeString('ja-JP', { 
+                            hour: '2-digit', 
+                            minute: '2-digit' 
+                        });
+                    }
+                    
+                    labels.push(label);
+                    
+                    // 集約された価格変動をシミュレート（30分毎データの平均として）
+                    const variation = (Math.random() - 0.5) * 0.2; // 20%の変動範囲に縮小（集約効果）
+                    const price = Math.round(basePrice * (1 + variation));
+                    data.push(price);
+                }
+                
+                return {
+                    labels: labels,
+                    datasets: [{
+                        label: `${itemName} (${this.intervals[this.currentInterval]})`,
+                        data: data,
+                        borderColor: '#2c3e50',
+                        backgroundColor: 'rgba(44, 62, 80, 0.1)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.3
+                    }]
+                };
+            }
+            
+            // 新規追加：市場平均価格表示切り替え
+            toggleMarketAverage() {
+                this.includeMarketAverage = !this.includeMarketAverage;
+                console.log(`Market average mode: ${this.includeMarketAverage ? 'enabled' : 'disabled'}`);
+                
+                const overlay = document.getElementById('comparisonOverlay');
+                if (overlay && overlay.style.display === 'flex') {
+                    this.renderComparisonChart();
+                }
+            }
+            
+            toggleDualAxisMode() {
+                this.dualAxisMode = !this.dualAxisMode;
+                console.log(`Dual axis mode: ${this.dualAxisMode ? 'enabled' : 'disabled'}`);
+                
+                const overlay = document.getElementById('comparisonOverlay');
+                if (overlay && overlay.style.display === 'flex') {
+                    this.renderComparisonChart();
+                }
+            }
+            
+            async showComparisonChart() {
+                if (!tracker?.selectedItemsA?.size || !tracker?.selectedItemsB?.size) {
+                    alert('比較するアイテムをセットAとセットBに選択してください');
+                    return;
+                }
+                
+                const overlay = document.getElementById('comparisonOverlay');
+                if (overlay) {
+                    overlay.style.display = 'flex';
+                    await this.renderComparisonChart();
+                }
+            }
+            
+            // 30分毎集約データを含む詳細比較チャート
+            async renderComparisonChart() {
+                if (typeof Chart === 'undefined') {
+                    console.error('Chart.js not available for comparison chart');
+                    return;
+                }
+                
+                const canvas = document.getElementById('comparisonChart');
+                if (!canvas) {
+                    console.error('Comparison chart canvas not found');
+                    return;
+                }
+                
+                const ctx = canvas.getContext('2d');
+                
+                if (this.comparisonChart) {
+                    this.comparisonChart.destroy();
+                }
+                
+                const itemA = Array.from(tracker.selectedItemsA.values())[0];
+                const itemB = Array.from(tracker.selectedItemsB.values())[0];
+                
+                try {
+                    console.log('Rendering 30分毎集約比較チャート for:', itemA.item_name, 'vs', itemB.item_name);
+                    
+                    const [dataA, dataB] = await Promise.all([
+                        this.fetchChartData(itemA.item_id, this.currentInterval),
+                        this.fetchChartData(itemB.item_id, this.currentInterval)
+                    ]);
+                    
+                    if (!dataA || !dataB) {
+                        alert('30分毎集約比較データの取得に失敗しました');
+                        return;
+                    }
+                    
+                    // 基本のデータセット
+                    const datasets = [
+                        {
+                            label: `${itemA.item_name} (セットA) - ${this.intervals[this.currentInterval]}`,
+                            data: dataA.datasets[0].data,
+                            borderColor: '#28a745',
+                            backgroundColor: 'rgba(40, 167, 69, 0.1)',
+                            borderWidth: 2,
+                            fill: false,
+                            tension: 0.3,
+                            yAxisID: this.dualAxisMode ? 'y' : 'y'
+                        },
+                        {
+                            label: `${itemB.item_name} (セットB) - ${this.intervals[this.currentInterval]}`,
+                            data: dataB.datasets[0].data,
+                            borderColor: '#ffc107',
+                            backgroundColor: 'rgba(255, 193, 7, 0.1)',
+                            borderWidth: 2,
+                            fill: false,
+                            tension: 0.3,
+                            yAxisID: this.dualAxisMode ? 'y1' : 'y'
+                        }
+                    ];
+                    
+                    // 市場平均価格を追加
+                    if (this.includeMarketAverage) {
+                        try {
+                            const avgData = await this.fetchMarketAverageData(this.currentInterval);
+                            if (avgData && avgData.data) {
+                                datasets.push({
+                                    label: `市場平均価格 (全アイテム) - ${this.intervals[this.currentInterval]}`,
+                                    data: avgData.data,
+                                    borderColor: '#9b59b6',
+                                    backgroundColor: 'rgba(155, 89, 182, 0.1)',
+                                    borderWidth: 2,
+                                    fill: false,
+                                    tension: 0.3,
+                                    borderDash: [5, 5],
+                                    yAxisID: this.dualAxisMode ? 'y' : 'y'
+                                });
+                            }
+                        } catch (error) {
+                            console.warn('Market average data fetch failed:', error);
+                        }
+                    }
+                    
+                    const comparisonData = {
+                        labels: dataA.labels.length >= dataB.labels.length ? dataA.labels : dataB.labels,
+                        datasets: datasets
+                    };
+                    
+                    // 纵轴设置
+                    const config = this.intervalConfigs[this.currentInterval];
+                    const scalesConfig = {
+                        x: {
+                            title: {
+                                display: true,
+                                text: `时间轴 (${this.intervals[this.currentInterval]}) - ${config.aggregation}`
+                            },
+                            ticks: {
+                                maxTicksLimit: config.maxTicks
+                            }
+                        }
+                    };
+                    
+                    if (this.dualAxisMode) {
+                        scalesConfig.y = {
+                            type: 'linear',
+                            display: true,
+                            position: 'left',
+                            title: {
+                                display: true,
+                                text: `${itemA.item_name} 价格 (NESO)`,
+                                color: '#28a745'
+                            },
+                            ticks: {
+                                callback: function(value) {
+                                    if (value >= 1000000) {
+                                        return (value / 1000000).toFixed(1) + 'M';
+                                    } else if (value >= 1000) {
+                                        return (value / 1000).toFixed(0) + 'K';
+                                    }
+                                    return value.toString();
+                                },
+                                color: '#28a745'
+                            },
+                            grid: { drawOnChartArea: false }
+                        };
+                        
+                        scalesConfig.y1 = {
+                            type: 'linear',
+                            display: true,
+                            position: 'right',
+                            title: {
+                                display: true,
+                                text: `${itemB.item_name} 价格 (NESO)`,
+                                color: '#ffc107'
+                            },
+                            ticks: {
+                                callback: function(value) {
+                                    if (value >= 1000000) {
+                                        return (value / 1000000).toFixed(1) + 'M';
+                                    } else if (value >= 1000) {
+                                        return (value / 1000).toFixed(0) + 'K';
+                                    }
+                                    return value.toString();
+                                },
+                                color: '#ffc107'
+                            },
+                            grid: { drawOnChartArea: false }
+                        };
+                    } else {
+                        scalesConfig.y = {
+                            title: {
+                                display: true,
+                                text: '价格 (NESO) - 30分钟数据聚合'
+                            },
+                            ticks: {
+                                callback: function(value) {
+                                    if (value >= 1000000) {
+                                        return (value / 1000000).toFixed(1) + 'M';
+                                    } else if (value >= 1000) {
+                                        return (value / 1000).toFixed(0) + 'K';
+                                    }
+                                    return value.toString();
+                                }
+                            }
+                        };
+                    }
+                    
+                    this.comparisonChart = new Chart(ctx, {
+                        type: 'line',
+                        data: comparisonData,
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                tooltip: {
+                                    mode: 'index',
+                                    intersect: false,
+                                    callbacks: {
+                                        label: function(context) {
+                                            return `${context.dataset.label}: ${context.parsed.y.toLocaleString()} NESO`;
+                                        },
+                                        afterBody: function() {
+                                            return `数据: ${config.aggregation}`;
+                                        }
+                                    }
+                                },
+                                legend: {
+                                    position: 'top',
+                                    labels: {
+                                        usePointStyle: true
+                                    }
+                                }
+                            },
+                            scales: scalesConfig,
+                            interaction: {
+                                mode: 'index',
+                                intersect: false
+                            },
+                            animation: { 
+                                duration: 300,
+                                easing: 'linear'
+                            }
+                        }
+                    });
+                    
+                    console.log('30分钟聚合比较图表 rendered successfully');
+                    
+                } catch (error) {
+                    console.error('Error rendering 30分钟聚合比较图表:', error);
+                    alert('30分钟聚合比较图表的绘制失败了');
+                }
+            }
+            
+            // 获取30分钟聚合市场平均价格数据
+            async fetchMarketAverageData(interval) {
+                try {
+                    const totalData = await this.fetchTotalPriceChartData(interval);
+                    if (totalData && totalData.datasets && totalData.datasets.length > 1) {
+                        return {
+                            labels: totalData.labels,
+                            data: totalData.datasets[1].data
+                        };
+                    }
+                    
+                    // 回退：示例数据
+                    const config = this.intervalConfigs[interval];
+                    const baseAvg = 3075967;
+                    const now = new Date();
+                    const data = [];
+                    
+                    for (let i = config.points - 1; i >= 0; i--) {
+                        const variation = (Math.random() - 0.5) * 0.15; // 通过聚合效果抑制变动
+                        const avgPrice = Math.round(baseAvg * (1 + variation));
+                        data.push(avgPrice);
+                    }
+                    
+                    return { data: data };
+                    
+                } catch (error) {
+                    console.error('Error fetching 30分钟聚合市场平均数据:', error);
+                    return null;
+                }
+            }
+            
+            async fetchChartData(itemId, interval) {
+                const cacheKey = `${itemId}_${interval}`;
+                
+                if (this.chartDataCache.has(cacheKey)) {
+                    console.log(`Using cached 30分钟聚合数据 for ${cacheKey}`);
+                    return this.chartDataCache.get(cacheKey);
+                }
+                
+                try {
+                    const url = `./data/price_history/${itemId}_${interval}.json`;
+                    console.log(`Fetching 30分钟聚合单个道具数据 from: ${url}`);
+                    
+                    const response = await fetch(url + '?v=' + Date.now());
+                    
+                    if (!response.ok) {
+                        console.warn(`未找到30分钟聚合图表数据 for ${itemId} (${interval}), using sample data`);
+                        return this.getSampleChartData(itemId);
+                    }
+                    
+                    const chartData = await response.json();
+                    
+                    if (!chartData || !chartData.labels || !chartData.datasets || chartData.datasets.length === 0) {
+                        console.warn(`无效的30分钟聚合图表数据 for ${itemId} (${interval}), using sample data`);
+                        return this.getSampleChartData(itemId);
+                    }
+                    
+                    this.chartDataCache.set(cacheKey, chartData);
+                    setTimeout(() => this.chartDataCache.delete(cacheKey), 300000);
+                    
+                    return chartData;
+                    
+                } catch (error) {
+                    console.error(`获取30分钟聚合图表数据错误 for ${itemId} (${interval}):`, error);
+                    return this.getSampleChartData(itemId);
+                }
+            }
+            
+            async showPriceChart(imageElement, mouseX, mouseY) {
+                if (!this.isInitialized || typeof Chart === 'undefined') {
+                    console.warn('Chart system not ready');
+                    return;
+                }
+                
+                const itemId = imageElement.getAttribute('data-item-id');
+                if (!itemId) {
+                    console.warn('No item ID found on image element');
+                    return;
+                }
+                
+                try {
+                    const chartData = await this.fetchChartData(itemId, this.currentInterval);
+                    
+                    const tooltip = document.getElementById('priceChartTooltip');
+                    if (!tooltip) {
+                        console.error('Chart tooltip element not found');
+                        return;
+                    }
+                    
+                    const tooltipWidth = 320;
+                    const tooltipHeight = 220;
+                    
+                    let left = mouseX + 10;
+                    let top = mouseY - 100;
+                    
+                    if (left + tooltipWidth > window.innerWidth) {
+                        left = mouseX - tooltipWidth - 10;
+                    }
+                    if (top < 0) {
+                        top = mouseY + 10;
+                    }
+                    
+                    tooltip.style.left = `${left}px`;
+                    tooltip.style.top = `${top}px`;
+                    tooltip.style.display = 'block';
+                    
+                    this.renderMiniChart(chartData, itemId);
+                    
+                } catch (error) {
+                    console.error('Error showing 30分毎集約価格チャート:', error);
+                }
+            }
+            
+            hidePriceChart() {
+                const tooltip = document.getElementById('priceChartTooltip');
+                if (tooltip) {
+                    tooltip.style.display = 'none';
+                }
+            }
+            
+            renderMiniChart(chartData, itemId) {
+                if (typeof Chart === 'undefined') {
+                    console.error('Chart.js not loaded');
+                    return;
+                }
+                
+                const canvas = document.getElementById('miniChart');
+                if (!canvas) {
+                    console.error('Mini chart canvas not found');
+                    return;
+                }
+                
+                const ctx = canvas.getContext('2d');
+                
+                if (this.miniChart) {
+                    this.miniChart.destroy();
+                }
+                
+                try {
+                    const config = this.intervalConfigs[this.currentInterval];
+                    
+                    this.miniChart = new Chart(ctx, {
+                        type: 'line',
+                        data: chartData,
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: { 
+                                    display: false 
+                                },
+                                tooltip: { 
+                                    enabled: true,
+                                    callbacks: {
+                                        label: function(context) {
+                                            return `価格: ${context.parsed.y.toLocaleString()} NESO`;
+                                        },
+                                        title: function(context) {
+                                            return context[0].label;
+                                        },
+                                        afterBody: function() {
+                                            return `データ: ${config.aggregation}`;
+                                        }
+                                    }
+                                }
+                            },
+                            scales: {
+                                x: { 
+                                    display: true,
+                                    ticks: { 
+                                        font: { size: 9 },
+                                        maxTicksLimit: 4
+                                    }
+                                },
+                                y: { 
+                                    display: true,
+                                    ticks: { 
+                                        font: { size: 9 },
+                                        callback: function(value) {
+                                            if (value >= 1000000) {
+                                                return (value / 1000000).toFixed(1) + 'M';
+                                            } else if (value >= 1000) {
+                                                return (value / 1000).toFixed(0) + 'K';
+                                            }
+                                            return value.toString();
+                                        }
+                                    }
+                                }
+                            },
+                            elements: {
+                                point: { radius: 2 }
+                            },
+                            animation: { 
+                                duration: 300,
+                                easing: 'linear'
+                            }
+                        }
+                    });
+                    
+                    console.log(`30分钟聚合迷你图表 rendered for item ${itemId} with ${chartData.labels.length} data points`);
+                    
+                } catch (error) {
+                    console.error('Error rendering 30分钟聚合迷你图表:', error);
+                }
+            }
+            
+            switchInterval(interval, clickedTab) {
+                console.log(`切换30分钟聚合间隔 to: ${interval}`);
+                this.currentInterval = interval;
+                
+                const tabContainer = clickedTab.parentElement;
+                tabContainer.querySelectorAll('.chart-interval-tab').forEach(tab => {
+                    tab.classList.toggle('active', tab.dataset.interval === interval);
+                });
+                
+                const tooltip = document.getElementById('priceChartTooltip');
+                if (this.miniChart && tooltip && tooltip.style.display === 'block') {
+                    const currentItem = document.querySelector('.item-image[data-item-id]');
+                    if (currentItem) {
+                        const itemId = currentItem.getAttribute('data-item-id');
+                        if (itemId) {
+                            this.fetchChartData(itemId, interval).then(chartData => {
+                                this.renderMiniChart(chartData, itemId);
+                            });
+                        }
+                    }
+                }
+            }
+            
+            closeComparison() {
+                const overlay = document.getElementById('comparisonOverlay');
+                if (overlay) {
+                    overlay.style.display = 'none';
+                }
+            }
+        }
+
+        // 全局函数
+        function sortTable(field) {
+            if (window.tracker) {
+                tracker.sortTable(field);
+            }
+        }
+        
+        function switchTab(tab) {
+            if (window.tracker) {
+                tracker.currentTab = tab;
+                
+                document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+                document.querySelector(`.tab-btn.${tab}`).classList.add('active');
+                
+                document.querySelectorAll('.selection-content').forEach(content => content.classList.remove('active'));
+                document.getElementById(`selection${tab.toUpperCase()}`).classList.add('active');
+            }
+        }
+        
+        function clearSet(set) {
+            if (window.tracker) {
+                if (set === 'a') {
+                    tracker.selectedItemsA.clear();
+                } else {
+                    tracker.selectedItemsB.clear();
+                }
+                tracker.updateSelectedItemsDisplay();
+                tracker.renderTable();
+            }
+        }
+        
+        function compareAllSets() {
+            if (window.chartManager) {
+                chartManager.showComparisonChart();
+            }
+        }
+        
+        function closeComparison() {
+            if (window.chartManager) {
+                chartManager.closeComparison();
+            }
+        }
+        
+        // 应用程序初始化（30分钟数据聚合系统对应）
+        let tracker;
+        let chartManager;
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('DOM loaded, initializing 30分钟数据聚合系统...');
+            
+            tracker = new MapleStoryPriceTracker();
+            window.tracker = tracker;
+            
+            chartManager = new PriceChartManager();
+            window.chartManager = chartManager;
+            
+            console.log('30分钟数据收集→时间间隔别聚合→图表显示系统初始化完成');
+        });
+    </script>
+</body>
+</html>
